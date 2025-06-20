@@ -1,0 +1,19 @@
+[Unit]
+Description=MarketMan Combined Monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/marketMan
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 /root/marketMan/marketman_monitor.py --loop 15
+Restart=always
+RestartSec=60
+StandardOutput=journal
+StandardError=journal
+
+
+[Install]
+WantedBy=multi-user.target

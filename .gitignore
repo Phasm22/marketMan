@@ -1,0 +1,137 @@
+# MarketMan .gitignore
+
+# Environment and Secrets
+.env
+.env.local
+.env.production
+.env.staging
+*.env
+
+# API Keys and Tokens
+config/secrets.json
+secrets/
+credentials/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs and Debug Files
+*.log
+logs/
+debug_*.html
+debug_*.txt
+*.debug
+
+# Email Debug Files
+debug_email.html
+email_dump_*.html
+test_email_*.eml
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+*.temp
+.cache/
+
+# Database Files
+*.db
+*.sqlite3
+*.sqlite
+
+# Backup Files
+*.bak
+*.backup
+backup_*/
+
+# OS Generated Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Test Coverage
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Notion Cache (if any)
+notion_cache/
+*.notion
+
+# System Service Files (generated)
+/etc/systemd/system/marketman.service
+
+# Local Test Files
+test_*.py
+local_test_*
+scratch_*
+
+# Personal Notes
+TODO.md
+NOTES.md
+personal_notes.txt
+
+# Email Attachments
+attachments/
+downloads/
+
+# Configuration Overrides
+config.local.json
+settings.local.py
