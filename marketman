@@ -33,6 +33,11 @@ def main():
     service_parser = subparsers.add_parser('service', help='Service management')
     service_parser.add_argument('action', choices=['install', 'start', 'stop', 'status'], help='Service action')
     
+    # Setup command
+    setup_parser = subparsers.add_parser('setup', help='Setup and configuration')
+    setup_parser.add_argument('--notion', action='store_true', help='Set up Notion database')
+    setup_parser.add_argument('--dashboard', action='store_true', help='Create Daily Signals Digest dashboard')
+    
     args = parser.parse_args()
     
     if not args.command:
@@ -90,3 +95,19 @@ def main():
         
         elif args.action in ['start', 'stop', 'status']:
             subprocess.run(['systemctl', args.action, 'marketman'])
+    
+    elif args.command == 'setup':
+        if args.notion:
+            print("🗄️ Setting up Notion database...")
+            import subprocess
+            subprocess.run(['python', 'notion_setup.py', '--create'])
+        elif args.dashboard:
+            print("📊 Creating Daily Signals Digest dashboard...")
+            import subprocess
+            subprocess.run(['python', 'create_digest_dashboard.py'])
+        else:
+            print("Please specify --notion or --dashboard")
+            sys.exit(1)
+
+if __name__ == "__main__":
+    main()

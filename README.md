@@ -4,7 +4,35 @@ An AI-powered system that monitors energy sector news and your infrastructure, d
 
 ## 🚀 Features
 
-- **📧 Gmail Integration**: Auto-fetches Google Alerts via IMAP
+- **📧 Gmail Integration**: A## 🚀 What's New in v2.0
+
+### ✅ **Unified Pushover System**
+- Reusable `pushover_utils.py` matching your proven server monitor pattern
+- Smart energy alerts with auto-formatting and priorities
+- System alerts compatible with existing yang.prox workflow
+- Clean notification links to Notion analysis pages (no more messy Google redirects)
+
+### ✅ **Article Images & Rich Media**
+- **Microlink Integration**: Auto-fetches article preview images and screenshots
+- **Notion Cover Images**: Each analysis gets a visual preview in the database
+- **Pushover Image Attachments**: Notifications include article images (when available)
+- **Rich Visual Experience**: Transform boring text alerts into engaging visual notifications
+
+### ✅ **Daily Signals Digest Dashboard**
+- **War Room Style**: Professional dashboard with filtered database views
+- **Smart Categories**: 
+  - 🚨 High Priority (Confidence ≥8)
+  - 📈 Strong Bullish Signals  
+  - 📉 Strong Bearish Signals
+  - 💬 Review Queue (Medium confidence)
+- **Team Collaboration**: Perfect for sharing market insights with your team
+- **One-Click Setup**: `python create_digest_dashboard.py`
+
+### ✅ **Enhanced Architecture** 
+- Modular design with clear separation of concerns
+- Production-ready error handling and recovery
+- CLI interface for easy management and testing
+- Systemd service support for automated deploymentoogle Alerts via IMAP
 - **🤖 GPT-4 Analysis**: AI-powered energy sector signal detection
 - **🖥️ System Monitoring**: Server ping monitoring (like yang.prox)
 - **📱 Unified Alerts**: Combined "server down" + "market signal" notifications
@@ -127,26 +155,30 @@ journalctl -f -u marketman
 
 ### Notion Setup (Optional)
 ```bash
-# Automated setup
+# Automated setup with image support
 python notion_setup.py --test              # Test existing
-python notion_setup.py --create            # Create new database
+python notion_setup.py --create            # Create new database with Image property
 python notion_setup.py --create --page-id "your-page-id" --auto  # Automated
 
-# Manual setup
-# 1. Create integration at notion.so/my-integrations
-# 2. Create database or run setup script
-# 3. Share database with your integration
+# Create Daily Signals Digest Dashboard
+python create_digest_dashboard.py          # War room style dashboard
 ```
+
+**Database includes:**
+- Title, Signal, Confidence, ETFs, Reasoning, Timestamp, Link
+- **NEW**: Cover images and Image URL property for visual previews
+- **NEW**: Enhanced database views for better organization
 
 ## 📊 How It Works
 
 ### News Analysis Flow
 1. **Fetch**: Polls Gmail for Google Alert emails
 2. **Extract**: Parses article titles, summaries, and links
-3. **Analyze**: GPT-4 evaluates energy sector relevance and signals
-4. **Filter**: Only processes confidence ≥7 signals
-5. **Alert**: Sends Pushover notification with Notion link
-6. **Log**: Stores full analysis in Notion database
+3. **🖼️ Image Fetch**: Uses Microlink API to get article preview images
+4. **Analyze**: GPT-4 evaluates energy sector relevance and signals
+5. **Filter**: Only processes confidence ≥7 signals
+6. **📱 Rich Alert**: Sends Pushover notification with image and Notion link
+7. **📊 Visual Log**: Stores analysis in Notion with cover image and structured data
 
 ### Output Format
 ```json
@@ -157,7 +189,8 @@ python notion_setup.py --create --page-id "your-page-id" --auto  # Automated
   "confidence": 8,
   "affected_etfs": ["XLE", "TAN"],
   "reasoning": "Solar subsidies cut, affecting TAN ETF outlook",
-  "market_impact": "Short-term bearish pressure on solar stocks"
+  "market_impact": "Short-term bearish pressure on solar stocks",
+  "image_url": "https://iad.microlink.io/article-preview.png"
 }
 ```
 
@@ -258,6 +291,9 @@ echo "*/15 * * * * cd /root/marketMan && ./marketman monitor" | crontab -
 - **UI Element Noise**: Filters out "Flag as irrelevant" and other Google Alert UI
 - **Notion Integration**: Graceful degradation when database isn't configured
 - **Article Extraction**: Better regex patterns for current Google Alert HTML
+- **🔗 Google URL Cleaning**: Automatically extracts real URLs from Google redirects
+- **🖼️ Image Integration**: Cover images work without requiring new database properties
+- **📱 Rich Notifications**: Pushover gets clean URLs and working image attachments
 
 ### ✅ **Key Improvements**
 - Early .env validation with helpful error messages
@@ -292,14 +328,17 @@ Core requirements automatically installed by `setup.sh`:
 ./setup.sh && cp .env.example .env
 # Edit .env with your credentials
 
-# Test
+# Test with images
 ./marketman test --all
 
-# Run
+# Create visual dashboard
+python create_digest_dashboard.py
+
+# Run with rich media
 ./marketman monitor --loop 15
 
 # Deploy
 ./marketman service install && ./marketman service start
 ```
 
-**🎯 You now have a production-ready system combining server monitoring expertise with AI-powered financial analysis!**
+**🎯 You now have a production-ready system with rich visual notifications and professional dashboard views - like having your own hedge fund analysis team!**

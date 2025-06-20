@@ -18,6 +18,60 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
+def get_microlink_image(url):
+    """Fetch article preview image using Microlink API"""
+    try:
+        logger.info(f"🖼️ Fetching image for: {url[:80]}...")
+        params = {
+            "url": url,
+            "screenshot": "true",
+            "meta": "false"
+        }
+        
+        response = requests.get("https://api.microlink.io", params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json().get("data", {})
+            
+            # Try different image sources in order of preference
+            for image_key in ["screenshot", "image", "logo"]:
+                image_data = data.get(image_key, {})
+                if image_data and image_data.get("url"):
+                    image_url = image_data["url"]
+                    logger.info(f"✅ Found {image_key} image: {image_url[:80]}...")
+                    return image_url
+            
+            logger.warning("⚠️ No image found in Microlink response")
+        else:
+            logger.warning(f"⚠️ Microlink API error: {response.status_code}")
+    except Exception as e:
+        logger.warning(f"⚠️ Error fetching image: {e}")
+    
+    return None
+
+def clean_google_redirect_url(url):
+    """Extract the actual URL from Google's redirect URL"""
+    if 'google.com/url' in url:
+        try:
+            import urllib.parse
+            import html
+            
+            # First decode HTML entities like &amp;
+            url = html.unescape(url)
+            
+            # Parse the URL parameters
+            parsed = urllib.parse.urlparse(url)
+            params = urllib.parse.parse_qs(parsed.query)
+            
+            # Extract the actual URL from the 'url' parameter
+            if 'url' in params:
+                actual_url = params['url'][0]
+                logger.info(f"🔗 Cleaned Google redirect: {actual_url[:80]}...")
+                return actual_url
+        except Exception as e:
+            logger.warning(f"⚠️ Error cleaning Google URL: {e}")
+    
+    return url
+
 def build_prompt(headline, summary, snippet=""):
     return f"""
 You're a financial AI assistant. Analyze the article for any sector-related trading signals.
@@ -131,6 +185,14 @@ class NewsAnalyzer:
                     if not analysis:
                         continue
 
+                    # Fetch article image using Microlink
+                    article_image = get_microlink_image(article['link'])
+                    
+                    logger.info(f"📊 Analysis: {analysis.get('signal')} confidence {analysis.get('confidence')}/10")
+                    logger.info(f"🔗 Article URL: {article['link'][:100]}...")
+                    if article_image:
+                        logger.info(f"🖼️ Image URL: {article_image[:100]}...")
+
                     # Prepare data for logging
                     analysis_data = {
                         "title": article['title'],
@@ -140,7 +202,8 @@ class NewsAnalyzer:
                         "reasoning": analysis.get('reasoning', ''),
                         "timestamp": alert['timestamp'],
                         "link": article['link'],
-                        "search_term": alert['search_term']
+                        "search_term": alert['search_term'],
+                        "image_url": article_image  # Add image URL
                     }                    # Log to Notion and get the page URL
                     notion_url = self.gmail_poller.log_to_notion(analysis_data)
                     
@@ -153,7 +216,8 @@ class NewsAnalyzer:
                             title=f"{analysis.get('signal', 'Unknown')} 📊 {article['title']}",
                             reasoning=f"{analysis.get('reasoning', '')} - Based on market developments.",
                             etfs=analysis.get('affected_etfs', []),
-                            article_url=notion_url if notion_url else None
+                            article_url=notion_url if notion_url else None,
+                            image_url=article_image  # Add image to Pushover
                         )
 
                     logger.info(f"Processed: {article['title']} - {analysis.get('signal', 'Unknown')} ({confidence}/10)")
@@ -316,9 +380,12 @@ class GmailPoller:
             if len(title) < 10 or "flag as irrelevant" in title.lower():
                 continue
             
+            # Clean Google redirect URLs
+            cleaned_link = clean_google_redirect_url(link)
+            
             articles.append({
                 "title": title,
-                "link": link,
+                "link": cleaned_link,
                 "snippet": description
             })
         
@@ -367,6 +434,15 @@ class GmailPoller:
                     }
                 }
             }
+            
+            # Add cover image if available (this works without needing an Image property)
+            image_url = analysis_data.get("image_url")
+            if image_url:
+                data["cover"] = {
+                    "type": "external",
+                    "external": {"url": image_url}
+                }
+                logger.info(f"🖼️ Adding cover image to Notion page")
             
             response = requests.post(
                 "https://api.notion.com/v1/pages",

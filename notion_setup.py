@@ -161,6 +161,8 @@ def create_notion_database(page_id=None, auto_confirm=False):
             "Link": {"url": {}},
             "Reviewed": {"checkbox": {}}
         }
+        }
+        }
     }
     
     try:
