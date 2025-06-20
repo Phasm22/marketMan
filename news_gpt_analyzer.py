@@ -11,8 +11,10 @@ from dotenv import load_dotenv
 import logging
 from pushover_utils import send_energy_alert, send_system_alert
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
+# Set up logging with debug control
+DEBUG_MODE = os.getenv("DEBUG", "false").lower() == "true"
+log_level = logging.DEBUG if DEBUG_MODE else logging.INFO
+logging.basicConfig(level=log_level)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
@@ -21,7 +23,7 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 def get_microlink_image(url):
     """Fetch article preview image using Microlink API"""
     try:
-        logger.info(f"🖼️ Fetching image for: {url[:80]}...")
+        logger.debug(f"🖼️ Fetching image for: {url}")
         params = {
             "url": url,
             "screenshot": "true",
@@ -37,7 +39,7 @@ def get_microlink_image(url):
                 image_data = data.get(image_key, {})
                 if image_data and image_data.get("url"):
                     image_url = image_data["url"]
-                    logger.info(f"✅ Found {image_key} image: {image_url[:80]}...")
+                    logger.info(f"✅ Found {image_key} image")
                     return image_url
             
             logger.warning("⚠️ No image found in Microlink response")
@@ -65,47 +67,153 @@ def clean_google_redirect_url(url):
             # Extract the actual URL from the 'url' parameter
             if 'url' in params:
                 actual_url = params['url'][0]
-                logger.info(f"🔗 Cleaned Google redirect: {actual_url[:80]}...")
+                logger.debug(f"🔗 Cleaned Google redirect: {actual_url[:100]}...")
                 return actual_url
         except Exception as e:
             logger.warning(f"⚠️ Error cleaning Google URL: {e}")
     
     return url
 
-def build_prompt(headline, summary, snippet=""):
+def get_etf_prices(etf_symbols):
+    """Fetch current ETF prices for market snapshot with rate limiting"""
+    try:
+        import yfinance as yf
+        import time
+        import random
+        
+        prices = {}
+        
+        logger.info(f"💰 Fetching real-time prices for {len(etf_symbols)} ETFs...")
+        
+        for i, symbol in enumerate(etf_symbols):
+            try:
+                # Add random delay to avoid rate limits
+                if i > 0:
+                    delay = random.uniform(0.5, 1.5)
+                    time.sleep(delay)
+
+                ticker = yf.Ticker(symbol)
+
+                # Fetch last 2 days for close/open logic
+                hist = ticker.history(period="2d")
+
+                if not hist.empty:
+                    # Use 2-day logic for prev_close/current_price
+                    if len(hist) >= 2:
+                        prev_close = hist['Close'].iloc[-2]
+                        current_price = hist['Close'].iloc[-1]
+                    else:
+                        current_price = hist['Close'].iloc[-1]
+                        prev_close = hist['Open'].iloc[-1] if len(hist) > 0 else current_price
+
+                    # Calculate percentage change
+                    change_pct = ((current_price - prev_close) / prev_close) * 100 if prev_close and prev_close != 0 else 0
+
+                    # Get volume data if available
+                    volume = hist['Volume'].iloc[-1] if 'Volume' in hist.columns else 0
+
+                    prices[symbol] = {
+                        "price": round(current_price, 2),
+                        "change_pct": round(change_pct, 2),
+                        "name": f"{symbol} ETF",  # Simplified name to avoid API calls
+                        "volume": int(volume) if volume else 0,
+                    }
+
+                    trend_emoji = "📈" if change_pct > 0 else "📉" if change_pct < 0 else "➖"
+                    if DEBUG_MODE:
+                        logger.debug(f"💰 {symbol}: ${current_price:.2f} ({change_pct:+.2f}%) {trend_emoji}")
+                    else:
+                        logger.info(f"💰 {symbol}: ${current_price:.2f} ({change_pct:+.2f}%)")
+                else:
+                    logger.warning(f"⚠️ No price data for {symbol}")
+
+            except Exception as e:
+                if DEBUG_MODE:
+                    logger.warning(f"⚠️ Error fetching price for {symbol}: {str(e)[:100]}...")
+                continue  # Continue with next symbol
+                
+        logger.info(f"✅ Successfully fetched prices for {len(prices)}/{len(etf_symbols)} ETFs")
+        return prices
+        
+    except ImportError:
+        logger.warning("⚠️ yfinance not installed, skipping price data")
+        return {}
+    except Exception as e:
+        logger.warning(f"⚠️ Error fetching ETF prices: {e}")
+        return {}
+
+def build_prompt(headline, summary, snippet="", etf_prices=None):
+    # Build comprehensive ETF price context if available
+    price_context = ""
+    if etf_prices:
+        price_context = "\n\n📊 LIVE MARKET SNAPSHOT:\n"
+        for symbol, data in etf_prices.items():
+            change_sign = "+" if data['change_pct'] >= 0 else ""
+            trend_emoji = "📈" if data['change_pct'] > 0 else "📉" if data['change_pct'] < 0 else "➖"
+            price_context += f"• {symbol} ({data.get('name', symbol)}): ${data['price']} ({change_sign}{data['change_pct']}%) {trend_emoji}\n"
+        price_context += "\nUse this real-time data to inform your strategic analysis.\n"
+    
     return f"""
-You're a financial AI assistant. Analyze the article for any sector-related trading signals.
+You are Mr.MarketMan, a seasoned energy markets strategist with 15+ years of experience. Your role is to provide strategic, actionable market intelligence with the wisdom of a mentor and the precision of a professional trader.
 
-Article Title: "{headline}"
+📰 MARKET INTELLIGENCE BRIEF:
+Title: "{headline}"
 Summary: "{summary}"
-Snippet: "{snippet}"
+Context: "{snippet}"{price_context}
 
-Determine the relevant sector(s) (e.g., Energy, Healthcare, Tech, Consumer Staples, Financials, etc.) and map to associated ETFs where possible.
-
-If no actionable financial relevance is found, respond with:
+ANALYSIS FRAMEWORK:
+If this content is NOT energy/financial sector related, respond with:
 {{"relevance": "not_financial", "confidence": 0}}
 
-If financial relevance is detected, respond in this exact JSON format:
+If energy/financial relevant, provide your strategic analysis in this JSON format:
 {{
     "relevance": "financial",
-    "sector": "Sector Name",
+    "sector": "Energy",
     "signal": "Bullish|Bearish|Neutral",
     "confidence": 1-10,
-    "affected_etfs": ["XLE", "XLV", "QQQ", "VDC", etc.],
-    "reasoning": "One-sentence explanation",
-    "market_impact": "Short description"
+    "affected_etfs": ["XLE", "ICLN", "TAN", "QCLN", "PBW", etc.],
+    "reasoning": "One clear, compelling sentence explaining the core market impact",
+    "market_impact": "Strategic implications for energy sector positioning (2-3 sentences)",
+    "price_action": "Expected ETF price movements and momentum drivers (2-3 sentences)",
+    "strategic_advice": "Specific tactical recommendations for portfolio positioning (2-3 sentences)",
+    "coaching_tone": "Professional coaching insight with strategic perspective (2-3 sentences)",
+    "risk_factors": "Key risks to monitor going forward (1-2 sentences)",
+    "opportunity_thesis": "Core investment opportunity or threat (1-2 sentences)"
 }}
 
-MUST respond with valid JSON only. No additional text."""
+COACHING PRINCIPLES:
+✅ Think like a strategic advisor, not just an analyst
+✅ Connect news to real portfolio implications
+✅ Balance opportunity assessment with risk management
+✅ Provide actionable guidance, not just commentary
+✅ Use current price data to validate or challenge the thesis
+✅ Maintain professional, confident tone with strategic depth
+
+RESPOND WITH VALID JSON ONLY - NO MARKDOWN OR EXPLANATIONS."""
 
 def analyze_energy_news(headline, summary, snippet=""):
-    # Debug logging to see what we're actually sending
-    logger.info(f"🤖 SENDING TO AI:")
-    logger.info(f"   Title: '{headline}'")
-    logger.info(f"   Summary: '{summary}'") 
-    logger.info(f"   Snippet: '{snippet}'")
+    # Compact logging for production, detailed for debug
+    if DEBUG_MODE:
+        logger.debug(f"🤖 MarketMan ANALYZING:")
+        logger.debug(f"   Title: '{headline}'")
+        logger.debug(f"   Summary: '{summary}'") 
+        logger.debug(f"   Snippet: '{snippet}'")
+    else:
+        logger.info(f"🤖 Analyzing: {headline[:60]}...")
     
-    prompt = build_prompt(headline, summary, snippet)
+    # Fetch current ETF prices for comprehensive market context (reduced to avoid rate limits)
+    major_etfs = [
+        "XLE",   # Energy Select Sector SPDR
+        "ICLN",  # iShares Global Clean Energy
+        "TAN",   # Invesco Solar ETF
+        "QCLN",  # First Trust NASDAQ Clean Edge Green Energy
+        "PBW"    # Invesco WilderHill Clean Energy
+    ]
+    
+    logger.debug(f"📊 Fetching market data for strategic context...")
+    etf_prices = get_etf_prices(major_etfs)
+    
+    prompt = build_prompt(headline, summary, snippet, etf_prices)
 
     try:
         response = openai.ChatCompletion.create(
@@ -115,7 +223,11 @@ def analyze_energy_news(headline, summary, snippet=""):
         )
 
         result = response['choices'][0]['message']['content'].strip()
-        logger.info(f"🤖 AI RESPONSE: {result}")
+        
+        if DEBUG_MODE:
+            logger.debug(f"🤖 MarketMan RESPONSE: {result}")
+        else:
+            logger.debug(f"🤖 Response received ({len(result)} chars)")
         
         # Clean up common JSON formatting issues
         result = result.replace('```json', '').replace('```', '')
@@ -126,33 +238,40 @@ def analyze_energy_news(headline, summary, snippet=""):
             json_result = json.loads(result)
             
             # Check if content is not energy related
-            if json_result.get('relevance') == 'not_energy':
-                logger.info(f"Skipping non-energy content: {headline[:50]}...")
+            if json_result.get('relevance') == 'not_financial':
+                logger.info(f"🚫 MarketMan says: Not energy/financial content: {headline[:50]}...")
                 return None
+                
+            # Add price data to the analysis result for downstream use
+            json_result['market_snapshot'] = etf_prices
+            json_result['analysis_timestamp'] = datetime.now().isoformat()
                 
             return json_result
             
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse AI response as JSON: {e}")
-            logger.error(f"Raw response: {result}")
+            logger.error(f"❌ Failed to parse MarketMan response as JSON: {e}")
+            if DEBUG_MODE:
+                logger.error(f"Raw response: {result}")
             
             # Try to extract signal from text if JSON parsing fails
-            if "not energy related" in result.lower() or "not_energy" in result.lower():
-                logger.info(f"AI detected non-energy content: {headline[:50]}...")
+            if "not energy related" in result.lower() or "not_financial" in result.lower():
+                logger.info(f"🚫 MarketMan detected non-energy content: {headline[:50]}...")
                 return None
                 
             # Return a basic structure if we can't parse JSON
             return {
-                "relevance": "energy",
+                "relevance": "financial",
+                "sector": "Energy",
                 "signal": "Neutral",
                 "confidence": 1,
                 "affected_etfs": [],
                 "reasoning": "Failed to parse AI response",
+                "market_snapshot": etf_prices,
                 "raw_response": result
             }
             
     except Exception as e:
-        logger.error(f"Error calling OpenAI API: {e}")
+        logger.error(f"❌ Error calling OpenAI API: {e}")
         return None
 
 class NewsAnalyzer:
@@ -188,39 +307,43 @@ class NewsAnalyzer:
                     # Fetch article image using Microlink
                     article_image = get_microlink_image(article['link'])
                     
-                    logger.info(f"📊 Analysis: {analysis.get('signal')} confidence {analysis.get('confidence')}/10")
-                    logger.info(f"🔗 Article URL: {article['link'][:100]}...")
-                    if article_image:
-                        logger.info(f"🖼️ Image URL: {article_image[:100]}...")
+                    signal = analysis.get('signal', 'Neutral')
+                    confidence = analysis.get('confidence', 0)
+                    logger.info(f"📊 {signal} signal ({confidence}/10) - {article['title'][:60]}...")
+                    
+                    if DEBUG_MODE:
+                        logger.debug(f"🔗 Article URL: {article['link']}")
+                        if article_image:
+                            logger.debug(f"🖼️ Image URL: {article_image}")
 
                     # Prepare data for logging
                     analysis_data = {
                         "title": article['title'],
-                        "signal": analysis.get('signal', 'Neutral'),
-                        "confidence": analysis.get('confidence', 0),
+                        "signal": signal,
+                        "confidence": confidence,
                         "etfs": analysis.get('affected_etfs', []),
                         "reasoning": analysis.get('reasoning', ''),
                         "timestamp": alert['timestamp'],
                         "link": article['link'],
                         "search_term": alert['search_term'],
                         "image_url": article_image  # Add image URL
-                    }                    # Log to Notion and get the page URL
+                    }
+                    
+                    # Log to Notion and get the page URL
                     notion_url = self.gmail_poller.log_to_notion(analysis_data)
                     
                     # Send Pushover alert using the new utility
-                    confidence = analysis.get('confidence', 0)
                     if confidence >= 7:
                         send_energy_alert(
-                            signal=analysis.get('signal', 'Unknown'),
+                            title=article['title'],
+                            signal=signal,
                             confidence=confidence,
-                            title=f"{analysis.get('signal', 'Unknown')} 📊 {article['title']}",
-                            reasoning=f"{analysis.get('reasoning', '')} - Based on market developments.",
+                            reasoning=analysis.get('reasoning', ''),
                             etfs=analysis.get('affected_etfs', []),
-                            article_url=notion_url if notion_url else None,
-                            image_url=article_image  # Add image to Pushover
+                            article_url=notion_url
                         )
 
-                    logger.info(f"Processed: {article['title']} - {analysis.get('signal', 'Unknown')} ({confidence}/10)")
+                    logger.info(f"✅ Processed: {signal} ({confidence}/10)")
 
                 except Exception as e:
                     logger.error(f"Error processing article '{article['title']}': {e}")
@@ -382,6 +505,7 @@ class GmailPoller:
             
             # Clean Google redirect URLs
             cleaned_link = clean_google_redirect_url(link)
+            logger.debug(f"🔗 Cleaned: {cleaned_link}")
             
             articles.append({
                 "title": title,
@@ -469,15 +593,59 @@ class GmailPoller:
 
 # EXAMPLE USAGE
 if __name__ == "__main__":
-    # Initialize the news analyzer
-    analyzer = NewsAnalyzer()
+    import sys
     
-    # Process new Google Alerts
-    analyzer.process_alerts()
+    # Check for debug flag
+    if "--debug" in sys.argv:
+        os.environ["DEBUG"] = "true"
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.info("🐛 Debug mode enabled")
     
-    # Example manual analysis (for testing)
-    # headline = "Solar Stocks Plummet on Clean Energy Budget Cuts"
-    # summary = "TAN dropped 9% after proposed legislation to cut solar subsidies advanced through the Senate. Investors reacted negatively across the sector."
-    # 
-    # analysis_result = analyze_energy_news(headline, summary)
-    # print(json.dumps(analysis_result, indent=2))
+    # Check for test mode
+    if "test" in sys.argv:
+        logger.info("🧪 Running MarketMan test analysis...")
+        logger.info("🤖 Testing MarketMan analysis engine...")
+        
+        # Example test analysis
+        headline = "Solar Industry Sees Record Q3 Growth as Federal Tax Credits Extended"
+        summary = "Solar installations surged 40% year-over-year in Q3, driven by renewed federal tax credit certainty and falling panel costs. Major utilities are accelerating clean energy procurement."
+        snippet = "The solar sector posted its strongest quarterly performance in over two years, with residential and utility-scale installations both showing robust growth."
+        
+        analysis_result = analyze_energy_news(headline, summary, snippet)
+        
+        if analysis_result:
+            logger.info("✅ MarketMan analysis successful!")
+            print("\n" + "="*60)
+            print("🎯 MarketMan ANALYSIS RESULT:")
+            print("="*60)
+            print(json.dumps(analysis_result, indent=2))
+            print("="*60)
+            
+            # Test Pushover alert
+            logger.info("📱 Testing enhanced Pushover alert...")
+            success = send_energy_alert(
+                title=headline,
+                signal=analysis_result.get('signal', 'Neutral'),
+                confidence=analysis_result.get('confidence', 0),
+                reasoning=analysis_result.get('reasoning', ''),
+                etfs=analysis_result.get('affected_etfs', []),
+                article_url=None
+            )
+            
+            if success:
+                logger.info("✅ Enhanced coaching alert sent successfully!")
+            else:
+                logger.warning("⚠️ Alert not sent (may be due to confidence threshold or missing credentials)")
+        else:
+            logger.error("❌ Test analysis failed")
+    else:
+        # Normal operation
+        logger.info("🚀 Starting MarketMan marketMan system...")
+        
+        # Initialize the news analyzer
+        analyzer = NewsAnalyzer()
+        
+        # Process new Google Alerts
+        analyzer.process_alerts()
+        
+        logger.info("✅ Marketman analysis cycle complete")

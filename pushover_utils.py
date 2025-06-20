@@ -70,9 +70,9 @@ def send_pushover_notification(message, title="Alert", priority=0, url=None, url
         print(f"🔥 Error sending Pushover notification: {e}")
         return False
 
-def send_energy_alert(signal, confidence, title, reasoning, etfs=None, article_url=None, image_url=None):
+def send_energy_alert(signal, confidence, title, reasoning, etfs=None, article_url=None, image_url=None, analysis=None):
     """
-    Specialized function for energy sector alerts
+    Enhanced coaching-style energy sector alerts with real-time market data
     
     Args:
         signal (str): Bullish/Bearish/Neutral
@@ -82,17 +82,24 @@ def send_energy_alert(signal, confidence, title, reasoning, etfs=None, article_u
         etfs (list): Affected ETFs
         article_url (str): Link to article
         image_url (str): Article preview image
+        analysis (dict): Full analysis with coaching insights and market data
     
     Returns:
         bool: True if sent successfully
     """
     # Determine priority based on confidence
-    if confidence >= 8:
-        priority = 1  # High priority
+    if confidence >= 9:
+        priority = 1  # High priority (emergency needs extra params)
         priority_emoji = "🚨"
+        alert_level = "CRITICAL"
+    elif confidence >= 8:
+        priority = 1  # High priority
+        priority_emoji = "⚡"
+        alert_level = "HIGH"
     elif confidence >= 7:
         priority = 0  # Normal priority
         priority_emoji = "📊"
+        alert_level = "STANDARD"
     else:
         return False  # Don't send low confidence alerts
     
@@ -103,26 +110,59 @@ def send_energy_alert(signal, confidence, title, reasoning, etfs=None, article_u
         "Neutral": "➖"
     }.get(signal, "❓")
     
-    # Build message
-    message = f"""
+    # Build comprehensive coaching-style message
+    message = f"""🎯 MARKETMAN - {alert_level} ALERT
+
 {signal_emoji} {signal} Signal ({confidence}/10)
 
+📰 SITUATION:
 {title}
 
-💡 {reasoning}
+💡 STRATEGIC ANALYSIS:
+{reasoning}
 """
     
-    if etfs:
-        message += f"\n🎯 ETFs: {', '.join(etfs)}"
+    # Add market snapshot if available
+    if analysis and analysis.get('market_snapshot'):
+        market_data = analysis['market_snapshot']
+        if market_data:
+            message += f"\n📊 LIVE MARKET DATA:"
+            for symbol, data in list(market_data.items())[:4]:  # Show top 4 ETFs
+                change_sign = "+" if data['change_pct'] >= 0 else ""
+                trend_emoji = "📈" if data['change_pct'] > 0 else "📉" if data['change_pct'] < 0 else "➖"
+                message += f"\n• {symbol}: ${data['price']} ({change_sign}{data['change_pct']}%) {trend_emoji}"
     
-    alert_title = f"{priority_emoji} Energy Alert: {signal}"
+    # Add coaching insights
+    if analysis and analysis.get('coaching_tone'):
+        message += f"\n\n🧠 COACH'S PERSPECTIVE:\n{analysis['coaching_tone']}"
+    
+    # Add strategic advice
+    if analysis and analysis.get('strategic_advice'):
+        message += f"\n\n🎯 STRATEGIC GUIDANCE:\n{analysis['strategic_advice']}"
+        
+    # Add risk factors
+    if analysis and analysis.get('risk_factors'):
+        message += f"\n\n⚠️ RISK WATCH:\n{analysis['risk_factors']}"
+        
+    # Add opportunity thesis
+    if analysis and analysis.get('opportunity_thesis'):
+        message += f"\n\n💰 OPPORTUNITY:\n{analysis['opportunity_thesis']}"
+    
+    # Add price action analysis
+    if analysis and analysis.get('price_action'):
+        message += f"\n\n� PRICE ACTION:\n{analysis['price_action']}"
+    
+    if etfs:
+        message += f"\n\n🎯 FOCUS ETFs: {', '.join(etfs)}"
+    
+    alert_title = f"{priority_emoji} Energy Market Intelligence"
     
     return send_pushover_notification(
         message=message.strip(),
         title=alert_title,
         priority=priority,
         url=article_url,
-        url_title="View in Notion" if article_url else None,
+        url_title="📊 View Full Analysis" if article_url else None,
         image_url=image_url
     )
 
@@ -161,11 +201,48 @@ def test_pushover():
         priority=0
     )
 
+def test_coaching_alert():
+    """Test the enhanced coaching-style energy alert"""
+    # Simulate a sample analysis
+    sample_analysis = {
+        'coaching_tone': "This development represents a classic sector rotation opportunity. Smart money is positioning for the next energy cycle, and early movers could capture significant alpha.",
+        'strategic_advice': "Consider scaling into clean energy positions on any near-term weakness. The regulatory tailwinds are strengthening, and valuations are becoming more attractive.",
+        'risk_factors': "Watch for broader market volatility and potential commodity price swings that could impact sector momentum.",
+        'opportunity_thesis': "Multi-year secular growth trend in renewable energy infrastructure spending creates compelling investment runway.",
+        'price_action': "Expect continued volatility but with an upward bias as institutional flows accelerate into the space.",
+        'market_snapshot': {
+            'ICLN': {'price': 22.45, 'change_pct': 2.3, 'name': 'iShares Global Clean Energy'},
+            'TAN': {'price': 55.67, 'change_pct': -1.2, 'name': 'Invesco Solar ETF'},
+            'XLE': {'price': 89.12, 'change_pct': 0.8, 'name': 'Energy Select Sector SPDR'},
+        }
+    }
+    
+    return send_energy_alert(
+        signal="Bullish",
+        confidence=8,
+        title="Clean Energy Legislation Gains Momentum in Senate",
+        reasoning="Bipartisan support emerging for renewable energy tax credits extension, potentially unlocking $50B+ in sector investment over next 3 years.",
+        etfs=["ICLN", "TAN", "QCLN"],
+        analysis=sample_analysis
+    )
+
 if __name__ == "__main__":
-    # Test the Pushover setup
-    print("🧪 Testing Pushover configuration...")
-    success = test_pushover()
-    if success:
-        print("🎉 Pushover is configured correctly!")
+    import sys
+    
+    if len(sys.argv) > 1 and sys.argv[1] == "coaching":
+        # Test the enhanced coaching alert
+        print("🧪 Testing enhanced coaching-style alert...")
+        success = test_coaching_alert()
+        if success:
+            print("🎉 Enhanced coaching alert sent successfully!")
+        else:
+            print("❌ Enhanced coaching alert failed. Check your credentials.")
     else:
-        print("❌ Pushover test failed. Check your credentials.")
+        # Test basic Pushover setup
+        print("🧪 Testing basic Pushover configuration...")
+        success = test_pushover()
+        if success:
+            print("🎉 Pushover is configured correctly!")
+            print("💡 Run 'python pushover_utils.py coaching' to test the enhanced coaching alerts")
+        else:
+            print("❌ Pushover test failed. Check your credentials.")
