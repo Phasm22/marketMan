@@ -105,9 +105,9 @@ def main():
     
     elif args.command == 'setup':
         if args.notion:
-            print("🗄️ Setting up Notion database...")
+            print("🗄️ Setting up enhanced Notion database with memory support...")
             import subprocess
-            subprocess.run(['python', 'notion_setup.py', '--create'])
+            subprocess.run(['python', 'notion_setup_enhanced.py', '--create'])
         else:
             print("Please specify --notion for database setup")
             sys.exit(1)
