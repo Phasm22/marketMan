@@ -1,45 +1,87 @@
 # 📧 MarketMan v2.0: Automated News & System Monitor
 
-An AI-powered system that monitors energy sector news and your infrastructure, delivering unified Pushover alerts with actionable insights.
+An AI-powered system that monitors energy sector news and your infrastructure, delivering unified Pushover alerts with professional coaching insights and real-time market data.
 
 ## 🚀 Features
 
-- **📧 Gmail Integration**: A## 🚀 What's New in v2.0
+- **📧 Gmail Integration**: Automated Google Alerts via IMAP
+- **🤖 Coach Alex Analysis**: AI-powered energy sector signal detection with professional coaching tone
+- **💰 Real-Time Prices**: Live ETF price integration via yfinance
+- **🖥️ System Monitoring**: Server ping monitoring (like yang.prox)
+- **📱 Enhanced Alerts**: Rich Pushover notifications with images and strategic insights
+- **📊 Smart Filtering**: Energy companies, renewables, oil & gas focus with confidence scoring
+- **🗃️ Visual Notion Logging**: Analysis results with article images and clickable links
+- **🎯 ETF Focus**: XLE, ICLN, TAN, QCLN, PBW recommendations with live pricing
+- **⚡ CLI Interface**: Easy testing, monitoring, and deployment
 
-### ✅ **Unified Pushover System**
-- Reusable `pushover_utils.py` matching your proven server monitor pattern
-- Smart energy alerts with auto-formatting and priorities
-- System alerts compatible with existing yang.prox workflow
-- Clean notification links to Notion analysis pages (no more messy Google redirects)
+## 🚀 What's New in v2.0
 
-### ✅ **Article Images & Rich Media**
+### ✅ **Professional Coaching Analysis**
+- **Coach Alex**: 15+ years energy markets strategist persona
+- **Strategic Framework**: Market impact, price action, strategic advice, risk factors
+- **Real-Time Context**: Live ETF prices integrated into analysis
+- **Professional Tone**: Actionable guidance with confident, strategic perspective
+
+### ✅ **Rich Visual Experience**
 - **Microlink Integration**: Auto-fetches article preview images and screenshots
 - **Notion Cover Images**: Each analysis gets a visual preview in the database
 - **Pushover Image Attachments**: Notifications include article images (when available)
-- **Rich Visual Experience**: Transform boring text alerts into engaging visual notifications
+- **Enhanced Notifications**: Professional coaching insights with live market data
 
-### ✅ **Daily Signals Digest Dashboard**
-- **War Room Style**: Professional dashboard with filtered database views
-- **Smart Categories**: 
-  - 🚨 High Priority (Confidence ≥8)
-  - 📈 Strong Bullish Signals  
-  - 📉 Strong Bearish Signals
-  - 💬 Review Queue (Medium confidence)
-- **Team Collaboration**: Perfect for sharing market insights with your team
-- **One-Click Setup**: `python create_digest_dashboard.py`
+### ✅ **Unified Pushover System**
+- Reusable `pushover_utils.py` matching proven server monitor patterns
+- Smart energy alerts with auto-formatting and priorities
+- System alerts compatible with existing yang.prox workflow
+- Clean notification links to Notion analysis pages
 
 ### ✅ **Enhanced Architecture** 
 - Modular design with clear separation of concerns
 - Production-ready error handling and recovery
-- CLI interface for easy management and testing
-- Systemd service support for automated deploymentoogle Alerts via IMAP
-- **🤖 GPT-4 Analysis**: AI-powered energy sector signal detection
-- **🖥️ System Monitoring**: Server ping monitoring (like yang.prox)
-- **📱 Unified Alerts**: Combined "server down" + "market signal" notifications
-- **📊 Smart Filtering**: Energy companies, renewables, oil & gas focus
-- **🗃️ Notion Logging**: Analysis results with clickable links
-- **🎯 ETF Recommendations**: XLE, ICLN, TAN suggestions
-- **⚡ CLI Interface**: Easy testing, monitoring, and deployment
+- Clean, professional logging with debug mode
+- Systemd service support for automated deployment
+
+## 🛠️ Technical Implementation
+
+### **Key Functions & Features**
+1. **`get_microlink_image(url)`** - Fetches article preview images and screenshots
+2. **`get_etf_prices(symbols)`** - Real-time ETF price fetching with yfinance
+3. **Enhanced `log_to_notion()`** - Adds cover images to Notion pages
+4. **Enhanced `send_pushover_notification()`** - Image attachments and rich formatting
+5. **`analyze_energy_news()`** - Coach Alex strategic analysis with market context
+
+### **Smart Features**
+- ⏱️ **Timeout Protection**: 10-second limits prevent hanging
+- 📏 **Size Limits**: Respects Pushover 2.5MB image limit  
+- 🔄 **Fallback Logic**: Multiple image sources (screenshot/image/logo)
+- 🛡️ **Error Handling**: Graceful degradation if images or prices fail
+- 🔍 **Smart Filtering**: AI filters out non-energy content automatically
+- 💰 **Rate Limiting**: Prevents Yahoo Finance API overuse
+
+### **Professional Output Example**
+```
+🎯 MARKETMAN - HIGH ALERT
+
+📈 Bullish Signal (8/10)
+
+📰 SITUATION:
+Solar Industry Sees Record Q3 Growth as Federal Tax Credits Extended
+
+💡 STRATEGIC ANALYSIS:
+The extension of federal tax credits and falling panel costs are driving significant growth in solar installations, indicating strong future demand.
+
+📊 LIVE MARKET DATA:
+• XLE: $88.98 (+1.02%) 📈
+• ICLN: $12.63 (-0.55%) 📉
+• TAN: $32.05 (-1.35%) 📉
+
+🧠 COACH'S PERSPECTIVE:
+Stay focused on the long-term growth trajectory of the solar sector, leveraging policy support and technological advancements.
+
+🎯 STRATEGIC GUIDANCE:
+Consider increasing exposure to solar and clean energy ETFs like TAN and ICLN as they are poised to benefit from favorable policy conditions.
+
+🎯 FOCUS ETFs: TAN, ICLN, QCLN, PBW
+```
 
 ## 🛠️ Quick Setup
 
@@ -159,15 +201,12 @@ journalctl -f -u marketman
 python notion_setup.py --test              # Test existing
 python notion_setup.py --create            # Create new database with Image property
 python notion_setup.py --create --page-id "your-page-id" --auto  # Automated
-
-# Create Daily Signals Digest Dashboard
-python create_digest_dashboard.py          # War room style dashboard
 ```
 
 **Database includes:**
 - Title, Signal, Confidence, ETFs, Reasoning, Timestamp, Link
 - **NEW**: Cover images and Image URL property for visual previews
-- **NEW**: Enhanced database views for better organization
+- **NEW**: Enhanced database structure for better organization
 
 ## 📊 How It Works
 
@@ -313,11 +352,11 @@ Core requirements automatically installed by `setup.sh`:
 ## 🔄 Future Enhancements
 
 - **Multiple AI Providers**: Claude, DeepSeek, local LLMs
-- **Web Dashboard**: Real-time monitoring interface  
 - **Portfolio Integration**: Brokerage API connections
 - **Advanced Analytics**: Backtesting and accuracy metrics
 - **Team Notifications**: Slack/Discord integration
 - **Risk Management**: Position sizing recommendations
+- **Extended Asset Coverage**: Commodities, crypto, bonds analysis
 
 ---
 
@@ -328,11 +367,8 @@ Core requirements automatically installed by `setup.sh`:
 ./setup.sh && cp .env.example .env
 # Edit .env with your credentials
 
-# Test with images
+# Test system
 ./marketman test --all
-
-# Create visual dashboard
-python create_digest_dashboard.py
 
 # Run with rich media
 ./marketman monitor --loop 15
@@ -341,4 +377,4 @@ python create_digest_dashboard.py
 ./marketman service install && ./marketman service start
 ```
 
-**🎯 You now have a production-ready system with rich visual notifications and professional dashboard views - like having your own hedge fund analysis team!**
+**🎯 You now have a production-ready system with rich visual notifications and professional coaching insights - like having your own hedge fund analysis team!**
