@@ -10,6 +10,7 @@ from email.header import decode_header
 from dotenv import load_dotenv
 import logging
 from pushover_utils import send_energy_alert, send_system_alert
+from market_memory import MarketMemory
 
 # Set up logging with debug control
 DEBUG_MODE = os.getenv("DEBUG", "false").lower() == "true"
@@ -19,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
+
+# Initialize MarketMemory for contextual tracking
+memory = MarketMemory()
 
 def get_microlink_image(url):
     """Fetch article preview image using Microlink API"""
@@ -142,7 +146,7 @@ def get_etf_prices(etf_symbols):
         logger.warning(f"⚠️ Error fetching ETF prices: {e}")
         return {}
 
-def build_prompt(headline, summary, snippet="", etf_prices=None):
+def build_prompt(headline, summary, snippet="", etf_prices=None, contextual_insight=None):
     # Build comprehensive ETF price context if available
     price_context = ""
     if etf_prices:
@@ -153,13 +157,18 @@ def build_prompt(headline, summary, snippet="", etf_prices=None):
             price_context += f"• {symbol} ({data.get('name', symbol)}): ${data['price']} ({change_sign}{data['change_pct']}%) {trend_emoji}\n"
         price_context += "\nUse this real-time data to inform your strategic analysis.\n"
     
+    # Add contextual insights from MarketMemory if available
+    context_section = ""
+    if contextual_insight:
+        context_section = f"\n\n🧠 RECENT PATTERN ANALYSIS:\n{contextual_insight}\n\nConsider these recent patterns when formulating your analysis and strategic advice.\n"
+    
     return f"""
 You are Mr.MarketMan, a seasoned energy markets strategist with 15+ years of experience. Your role is to provide strategic, actionable market intelligence with the wisdom of a mentor and the precision of a professional trader.
 
 📰 MARKET INTELLIGENCE BRIEF:
 Title: "{headline}"
 Summary: "{summary}"
-Context: "{snippet}"{price_context}
+Context: "{snippet}"{price_context}{context_section}
 
 ANALYSIS FRAMEWORK:
 If this content is NOT energy/financial sector related, respond with:
@@ -213,7 +222,11 @@ def analyze_energy_news(headline, summary, snippet=""):
     logger.debug(f"📊 Fetching market data for strategic context...")
     etf_prices = get_etf_prices(major_etfs)
     
-    prompt = build_prompt(headline, summary, snippet, etf_prices)
+    # Get contextual insights from memory (do a preliminary analysis to get ETFs)
+    temp_analysis = {"signal": "Neutral", "affected_etfs": major_etfs}
+    contextual_insight = memory.get_contextual_insight(temp_analysis, major_etfs)
+    
+    prompt = build_prompt(headline, summary, snippet, etf_prices, contextual_insight)
 
     try:
         response = openai.ChatCompletion.create(
@@ -245,6 +258,13 @@ def analyze_energy_news(headline, summary, snippet=""):
             # Add price data to the analysis result for downstream use
             json_result['market_snapshot'] = etf_prices
             json_result['analysis_timestamp'] = datetime.now().isoformat()
+            
+            # Store the analysis in memory for contextual tracking
+            try:
+                memory.store_signal(json_result, headline)
+                logger.debug("💾 Analysis stored in MarketMemory")
+            except Exception as mem_error:
+                logger.warning(f"⚠️ Failed to store analysis in memory: {mem_error}")
                 
             return json_result
             
@@ -309,24 +329,35 @@ class NewsAnalyzer:
                     
                     signal = analysis.get('signal', 'Neutral')
                     confidence = analysis.get('confidence', 0)
+                    etfs = analysis.get('affected_etfs', [])
+                    
+                    # Get fresh contextual insights for this specific analysis
+                    contextual_insight = memory.get_contextual_insight(analysis, etfs)
+                    
                     logger.info(f"📊 {signal} signal ({confidence}/10) - {article['title'][:60]}...")
+                    
+                    if contextual_insight:
+                        logger.info(f"🧠 Context: {contextual_insight[:100]}...")
                     
                     if DEBUG_MODE:
                         logger.debug(f"🔗 Article URL: {article['link']}")
                         if article_image:
                             logger.debug(f"🖼️ Image URL: {article_image}")
+                        if contextual_insight:
+                            logger.debug(f"🧠 Full Context: {contextual_insight}")
 
                     # Prepare data for logging
                     analysis_data = {
                         "title": article['title'],
                         "signal": signal,
                         "confidence": confidence,
-                        "etfs": analysis.get('affected_etfs', []),
+                        "etfs": etfs,
                         "reasoning": analysis.get('reasoning', ''),
                         "timestamp": alert['timestamp'],
                         "link": article['link'],
                         "search_term": alert['search_term'],
-                        "image_url": article_image  # Add image URL
+                        "image_url": article_image,  # Add image URL
+                        "contextual_insight": contextual_insight  # Add contextual insight
                     }
                     
                     # Log to Notion and get the page URL
@@ -334,12 +365,17 @@ class NewsAnalyzer:
                     
                     # Send Pushover alert using the new utility
                     if confidence >= 7:
+                        # Enhance reasoning with contextual insight if available
+                        enhanced_reasoning = analysis.get('reasoning', '')
+                        if contextual_insight:
+                            enhanced_reasoning += f"\n\n🧠 Context: {contextual_insight}"
+                        
                         send_energy_alert(
                             title=article['title'],
                             signal=signal,
                             confidence=confidence,
-                            reasoning=analysis.get('reasoning', ''),
-                            etfs=analysis.get('affected_etfs', []),
+                            reasoning=enhanced_reasoning,
+                            etfs=etfs,
                             article_url=notion_url
                         )
 
@@ -638,6 +674,64 @@ if __name__ == "__main__":
                 logger.warning("⚠️ Alert not sent (may be due to confidence threshold or missing credentials)")
         else:
             logger.error("❌ Test analysis failed")
+        
+        # Test multiple analyses to demonstrate pattern detection
+        test_cases = [
+            {
+                "headline": "Solar Industry Sees Record Q3 Growth as Federal Tax Credits Extended",
+                "summary": "Solar installations surged 40% year-over-year in Q3, driven by renewed federal tax credit certainty and falling panel costs.",
+                "snippet": "The solar sector posted its strongest quarterly performance in over two years."
+            },
+            {
+                "headline": "ICLN Faces Headwinds as Chinese Solar Tariffs Increase Manufacturing Costs",
+                "summary": "New tariffs on Chinese solar panels are expected to impact clean energy ETFs, particularly ICLN and TAN.",
+                "snippet": "Trade tensions are creating supply chain disruptions in the clean energy sector."
+            },
+            {
+                "headline": "Second Consecutive Bearish Signal for ICLN as Earnings Disappoint",
+                "summary": "ICLN holdings report lower-than-expected earnings, continuing the bearish trend.",
+                "snippet": "Clean energy stocks face mounting pressure from rising interest rates."
+            }
+        ]
+        
+        logger.info("🧪 Testing pattern detection with multiple signals...")
+        
+        for i, test_case in enumerate(test_cases):
+            logger.info(f"🧪 Test case {i+1}/{len(test_cases)}: {test_case['headline'][:50]}...")
+            
+            analysis_result = analyze_energy_news(
+                test_case['headline'],
+                test_case['summary'],
+                test_case['snippet']
+            )
+            
+            if analysis_result:
+                logger.info(f"✅ Analysis {i+1}: {analysis_result.get('signal')} ({analysis_result.get('confidence')}/10)")
+            else:
+                logger.warning(f"⚠️ Analysis {i+1} failed")
+        
+        # Show memory patterns after multiple analyses
+        logger.info("\n🧠 Checking for detected patterns...")
+        from market_memory import MarketMemory
+        memory = MarketMemory()
+        
+        patterns = memory.detect_patterns()
+        if patterns:
+            logger.info(f"Found {len(patterns)} patterns:")
+            for pattern in patterns:
+                logger.info(f"  • {pattern['description']}")
+        else:
+            logger.info("No patterns detected yet (need more signals)")
+        
+        # Show updated stats
+        stats = memory.get_memory_stats()
+        logger.info(f"\n📊 Updated Memory Stats:")
+        logger.info(f"  Total signals: {stats.get('total_signals', 0)}")
+        logger.info(f"  Recent signals: {stats.get('recent_activity', 0)}")
+        
+        # Show original test case
+        logger.info("\n🎯 Original Test Case:")
+        analysis_result = analyze_energy_news(headline, summary, snippet)
     else:
         # Normal operation
         logger.info("🚀 Starting MarketMan marketMan system...")

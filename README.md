@@ -11,10 +11,18 @@ An AI-powered system that monitors energy sector news and your infrastructure, d
 - **📱 Enhanced Alerts**: Rich Pushover notifications with images and strategic insights
 - **📊 Smart Filtering**: Energy companies, renewables, oil & gas focus with confidence scoring
 - **🗃️ Visual Notion Logging**: Analysis results with article images and clickable links
+- **🧠 Contextual Memory**: Track signal patterns, detect consecutive alerts, and provide historical context
 - **🎯 ETF Focus**: XLE, ICLN, TAN, QCLN, PBW recommendations with live pricing
-- **⚡ CLI Interface**: Easy testing, monitoring, and deployment
+- **⚡ CLI Interface**: Easy testing, monitoring, memory queries, and deployment
 
 ## 🚀 What's New in v2.0
+
+### ✅ **Contextual Memory System**
+- **Pattern Detection**: Tracks consecutive bullish/bearish signals for each ETF
+- **Historical Context**: "ICLN has been in back-to-back bearish alerts. Possible long-term sector drift forming."
+- **SQLite Storage**: Lightweight, persistent memory with pattern recognition
+- **Memory CLI**: Query recent patterns, stats, and cleanup old data
+- **AI Integration**: Contextual insights automatically included in analysis prompts
 
 ### ✅ **Professional Coaching Analysis**
 - **Coach Alex**: 15+ years energy markets strategist persona
@@ -43,11 +51,12 @@ An AI-powered system that monitors energy sector news and your infrastructure, d
 ## 🛠️ Technical Implementation
 
 ### **Key Functions & Features**
-1. **`get_microlink_image(url)`** - Fetches article preview images and screenshots
-2. **`get_etf_prices(symbols)`** - Real-time ETF price fetching with yfinance
-3. **Enhanced `log_to_notion()`** - Adds cover images to Notion pages
-4. **Enhanced `send_pushover_notification()`** - Image attachments and rich formatting
-5. **`analyze_energy_news()`** - Coach Alex strategic analysis with market context
+1. **`MarketMemory`** - SQLite-based contextual memory with pattern detection
+2. **`get_microlink_image(url)`** - Fetches article preview images and screenshots
+3. **`get_etf_prices(symbols)`** - Real-time ETF price fetching with yfinance
+4. **Enhanced `log_to_notion()`** - Adds cover images to Notion pages
+5. **Enhanced `send_pushover_notification()`** - Image attachments and rich formatting
+6. **`analyze_energy_news()`** - Coach Alex strategic analysis with market context and memory insights
 
 ### **Smart Features**
 - ⏱️ **Timeout Protection**: 10-second limits prevent hanging
@@ -162,6 +171,13 @@ send_system_alert("yang.prox", "DOWN", "Host unreachable")
 ./marketman send "Custom alert" --priority 1  # Send manual alert
 ./marketman service install            # Install systemd service
 ./marketman service start              # Start background service
+
+# Memory operations
+./marketman memory                     # Show recent signals
+./marketman memory --stats             # Memory statistics
+./marketman memory --patterns          # Show detected patterns
+./marketman memory --etf ICLN          # Patterns for specific ETF
+./marketman memory --cleanup 30        # Clean up data older than 30 days
 ```
 
 ### Direct Python (Alternative)

@@ -37,6 +37,14 @@ def main():
     setup_parser = subparsers.add_parser('setup', help='Setup and configuration')
     setup_parser.add_argument('--notion', action='store_true', help='Set up Notion database')
     
+    # Memory command
+    memory_parser = subparsers.add_parser('memory', help='Market memory operations')
+    memory_parser.add_argument('--patterns', action='store_true', help='Show recent patterns')
+    memory_parser.add_argument('--stats', action='store_true', help='Show memory statistics')
+    memory_parser.add_argument('--etf', help='Show patterns for specific ETF')
+    memory_parser.add_argument('--days', type=int, default=7, help='Days to look back (default: 7)')
+    memory_parser.add_argument('--cleanup', type=int, help='Clean up data older than N days')
+    
     args = parser.parse_args()
     
     if not args.command:
@@ -103,6 +111,76 @@ def main():
         else:
             print("Please specify --notion for database setup")
             sys.exit(1)
+    
+    elif args.command == 'memory':
+        from market_memory import MarketMemory
+        memory = MarketMemory()
+        
+        if args.cleanup:
+            print(f"🧹 Cleaning up data older than {args.cleanup} days...")
+            memory.cleanup_old_data(args.cleanup)
+            print("✅ Cleanup complete")
+            
+        elif args.stats:
+            print("📊 Memory Statistics:")
+            stats = memory.get_memory_stats()
+            print(f"   Total signals: {stats.get('total_signals', 0)}")
+            print(f"   Recent signals (7 days): {stats.get('recent_activity', 0)}")
+            
+            # Show signal breakdown if available
+            breakdown = stats.get('signal_breakdown', {})
+            if breakdown:
+                print("   Signal breakdown:")
+                for signal_type, count in breakdown.items():
+                    print(f"     {signal_type}: {count}")
+            
+            # Show date range if available
+            date_range = stats.get('date_range', (None, None))
+            if date_range[0] and date_range[1]:
+                print(f"   Date range: {date_range[0]} to {date_range[1]}")
+            
+            # Get database file size
+            db_path = stats.get('db_path', 'marketman_memory.db')
+            try:
+                import os
+                if os.path.exists(db_path):
+                    size_mb = os.path.getsize(db_path) / (1024 * 1024)
+                    print(f"   Database size: {size_mb:.2f} MB")
+                else:
+                    print("   Database: Not yet created")
+            except Exception as e:
+                print(f"   Database size: Unable to determine ({e})")
+            
+            # Get active patterns count
+            try:
+                patterns = memory.detect_patterns()
+                print(f"   Active patterns: {len(patterns)}")
+            except:
+                print("   Active patterns: 0")
+            
+        elif args.patterns or args.etf:
+            etf_filter = args.etf.upper() if args.etf else None
+            patterns = memory.detect_patterns(etf_symbol=etf_filter)
+            
+            if not patterns:
+                filter_text = f" for {etf_filter}" if etf_filter else ""
+                print(f"🤷 No patterns found{filter_text}")
+            else:
+                print(f"🧠 Recent Market Patterns:")
+                for pattern in patterns:
+                    print(f"   • {pattern['description']}")
+        else:
+            # Show recent signals by default
+            signals = memory.get_recent_signals(args.days)
+            if not signals:
+                print(f"📭 No signals found in the last {args.days} days")
+            else:
+                print(f"📈 Last {len(signals)} signals ({args.days} days):")
+                for signal in signals[:10]:  # Limit to 10 most recent
+                    etfs_str = ", ".join(signal['etfs'][:3])  # Show first 3 ETFs
+                    print(f"   • {signal['date']} - {signal['signal']} ({signal['confidence']}/10) - {etfs_str}")
+                    print(f"     {signal['title'][:80]}...")
+                    print()
 
 if __name__ == "__main__":
     main()
