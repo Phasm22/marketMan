@@ -72,97 +72,63 @@ def send_pushover_notification(message, title="Alert", priority=0, url=None, url
 
 def send_energy_alert(signal, confidence, title, reasoning, etfs=None, article_url=None, image_url=None, analysis=None):
     """
-    Enhanced coaching-style energy sector alerts with real-time market data
+    Concise energy sector alerts - detailed analysis goes to Notion
     
     Args:
         signal (str): Bullish/Bearish/Neutral
         confidence (int): Confidence score 1-10
         title (str): Article title
-        reasoning (str): AI reasoning
+        reasoning (str): Brief AI reasoning (contextual insights stay in Notion)
         etfs (list): Affected ETFs
-        article_url (str): Link to article
+        article_url (str): Link to Notion page with full analysis
         image_url (str): Article preview image
-        analysis (dict): Full analysis with coaching insights and market data
+        analysis (dict): Full analysis (not used in alert to keep it concise)
     
     Returns:
         bool: True if sent successfully
     """
     # Determine priority based on confidence
     if confidence >= 9:
-        priority = 1  # High priority (emergency needs extra params)
-        priority_emoji = "🚨"
+        priority = 1  # High priority
         alert_level = "CRITICAL"
     elif confidence >= 8:
         priority = 1  # High priority
-        priority_emoji = "⚡"
         alert_level = "HIGH"
     elif confidence >= 7:
         priority = 0  # Normal priority
-        priority_emoji = "📊"
         alert_level = "STANDARD"
     else:
         return False  # Don't send low confidence alerts
     
     # Format signal with emoji
     signal_emoji = {
-        "Bullish": "📈",
+        "Bullish": "�",
         "Bearish": "📉", 
         "Neutral": "➖"
     }.get(signal, "❓")
     
-    # Build comprehensive coaching-style message
-    message = f"""🎯 MARKETMAN - {alert_level} ALERT
+    # Build concise message - keep it short and actionable
+    message = f"""{signal_emoji} {signal.upper()} Signal ({confidence}/10)
 
-{signal_emoji} {signal} Signal ({confidence}/10)
+{title[:80]}{'...' if len(title) > 80 else ''}
 
-📰 SITUATION:
-{title}
-
-💡 STRATEGIC ANALYSIS:
-{reasoning}
-"""
+💡 {reasoning}"""
     
-    # Add market snapshot if available
-    if analysis and analysis.get('market_snapshot'):
-        market_data = analysis['market_snapshot']
-        if market_data:
-            message += f"\n📊 LIVE MARKET DATA:"
-            for symbol, data in list(market_data.items())[:4]:  # Show top 4 ETFs
-                change_sign = "+" if data['change_pct'] >= 0 else ""
-                trend_emoji = "📈" if data['change_pct'] > 0 else "📉" if data['change_pct'] < 0 else "➖"
-                message += f"\n• {symbol}: ${data['price']} ({change_sign}{data['change_pct']}%) {trend_emoji}"
+    # Add affected ETFs if available
+    if etfs and len(etfs) > 0:
+        etf_list = ', '.join(etfs[:4])  # Show max 4 ETFs
+        if len(etfs) > 4:
+            etf_list += f" +{len(etfs)-4} more"
+        message += f"\n\n🎯 ETFs: {etf_list}"
     
-    # Add coaching insights
-    if analysis and analysis.get('coaching_tone'):
-        message += f"\n\n🧠 COACH'S PERSPECTIVE:\n{analysis['coaching_tone']}"
-    
-    # Add strategic advice
-    if analysis and analysis.get('strategic_advice'):
-        message += f"\n\n🎯 STRATEGIC GUIDANCE:\n{analysis['strategic_advice']}"
-        
-    # Add risk factors
-    if analysis and analysis.get('risk_factors'):
-        message += f"\n\n⚠️ RISK WATCH:\n{analysis['risk_factors']}"
-        
-    # Add opportunity thesis
-    if analysis and analysis.get('opportunity_thesis'):
-        message += f"\n\n💰 OPPORTUNITY:\n{analysis['opportunity_thesis']}"
-    
-    # Add price action analysis
-    if analysis and analysis.get('price_action'):
-        message += f"\n\n� PRICE ACTION:\n{analysis['price_action']}"
-    
-    if etfs:
-        message += f"\n\n🎯 FOCUS ETFs: {', '.join(etfs)}"
-    
-    alert_title = f"{priority_emoji} Energy Market Intelligence"
+    alert_title = f"MarketMan {alert_level}"
     
     return send_pushover_notification(
         message=message.strip(),
         title=alert_title,
         priority=priority,
         url=article_url,
-        url_title="📊 View Full Analysis" if article_url else None,
+        url_title="📊 Full Analysis" if article_url else None,
         image_url=image_url
     )
 

@@ -116,10 +116,24 @@ def main():
         from market_memory import MarketMemory
         memory = MarketMemory()
         
-        if args.cleanup:
+        if args.cleanup is not None:
             print(f"🧹 Cleaning up data older than {args.cleanup} days...")
-            memory.cleanup_old_data(args.cleanup)
-            print("✅ Cleanup complete")
+            result = memory.cleanup_old_data(args.cleanup)
+            
+            if 'error' in result:
+                print(f"❌ Error during cleanup: {result['error']}")
+                sys.exit(1)
+            else:
+                deleted_signals = result.get('deleted_signals', 0)
+                deleted_patterns = result.get('deleted_patterns', 0)
+                cutoff_date = result.get('cutoff_date', 'unknown')
+                
+                if deleted_signals + deleted_patterns > 0:
+                    print(f"✅ Cleanup complete: {deleted_signals} signals and {deleted_patterns} patterns deleted")
+                    print(f"   (Records older than {cutoff_date})")
+                else:
+                    print(f"✅ Cleanup complete: No records older than {args.cleanup} days found")
+                    print(f"   (Would delete records older than {cutoff_date})")
             
         elif args.stats:
             print("📊 Memory Statistics:")

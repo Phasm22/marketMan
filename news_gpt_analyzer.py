@@ -156,58 +156,45 @@ def build_prompt(headline, summary, snippet="", etf_prices=None, contextual_insi
             trend_emoji = "📈" if data['change_pct'] > 0 else "📉" if data['change_pct'] < 0 else "➖"
             price_context += f"• {symbol} ({data.get('name', symbol)}): ${data['price']} ({change_sign}{data['change_pct']}%) {trend_emoji}\n"
         price_context += "\nUse this real-time data to inform your strategic analysis.\n"
-    
-    # Add contextual insights from MarketMemory if available
-    context_section = ""
-    if contextual_insight:
-        context_section = f"\n\n🧠 RECENT PATTERN ANALYSIS:\n{contextual_insight}\n\nConsider these recent patterns when formulating your analysis and strategic advice.\n"
-    
-    return f"""
-You are Mr.MarketMan, a seasoned thematic ETF strategist with 15+ years of experience in momentum investing and sector rotation. Your role is to identify high-potential ETF opportunities across AI, defense, clean energy, thematic investing, and emerging market trends.
 
-📰 MARKET INTELLIGENCE BRIEF:
+    return f"""
+You are MarketMan — a tactical ETF strategist focused on identifying high-momentum opportunities in defense, AI, energy, clean tech, and volatility hedging. Your job is to turn breaking market intelligence into ETF positioning signals.
+
+Analyze the following news and market context to determine if there's an actionable ETF play:
+
+🧠 PATTERN MEMORY:
+{contextual_insight or 'None'}
+
+📊 MARKET SNAPSHOT:
+{price_context or 'No price data'}
+
+📰 ARTICLE:
 Title: "{headline}"
 Summary: "{summary}"
-Context: "{snippet}"{price_context}{context_section}
+Additional Context: "{snippet}"
 
-ANALYSIS FRAMEWORK:
-If this content is NOT related to ETF investing, thematic trends, or market flows, respond with:
+If this content is NOT relevant to thematic ETF investing, return:
 {{"relevance": "not_financial", "confidence": 0}}
 
-If relevant to ETF/thematic investing, provide your strategic analysis in this JSON format:
+Otherwise, return:
 {{
-    "relevance": "financial",
-    "sector": "AI/Tech|Defense|Clean Energy|Nuclear|Thematic|Flows|Volatility|Broad Market",
-    "signal": "Bullish|Bearish|Neutral",
-    "confidence": 1-10,
-    "affected_etfs": ["BOTZ", "ITA", "URNM", "ICLN", "VIXY", "SPY", etc.],
-    "reasoning": "One clear, compelling sentence explaining the core market impact",
-    "market_impact": "Strategic implications for thematic ETF positioning (2-3 sentences)",
-    "price_action": "Expected ETF price movements and momentum drivers (2-3 sentences)",
-    "strategic_advice": "Specific tactical recommendations for ETF positioning (2-3 sentences)",
-    "coaching_tone": "Professional coaching insight with momentum/thematic perspective (2-3 sentences)",
-    "risk_factors": "Key risks to monitor going forward (1-2 sentences)",
-    "opportunity_thesis": "Core thematic investment opportunity or threat (1-2 sentences)",
-    "theme_category": "AI/Robotics|Defense/Aerospace|Nuclear/Uranium|CleanTech/Climate|Flows/Technical|Volatility/Hedge|Broad Market"
+  "relevance": "financial",
+  "sector": "Defense|AI|CleanTech|Volatility|Uranium|Broad Market",
+  "signal": "Bullish|Bearish|Neutral",
+  "confidence": 1-10,
+  "affected_etfs": ["ITA", "XAR", "ICLN", etc],
+  "reasoning": "Short rationale for signal",
+  "market_impact": "Brief on broader ETF strategy",
+  "price_action": "Expected ETF movements",
+  "strategic_advice": "Tactical recommendations",
+  "coaching_tone": "Professional insight with momentum focus",
+  "risk_factors": "Key risks to monitor",
+  "opportunity_thesis": "Thematic investment thesis",
+  "theme_category": "AI/Robotics|Defense/Aerospace|CleanTech/Climate|Volatility/Hedge|Broad Market"
 }}
 
-THEMATIC FOCUS AREAS:
-🤖 AI/ROBOTICS: BOTZ, ROBO, IRBO, ARKQ, SMH, SOXX
-🛡️ DEFENSE/AEROSPACE: ITA, XAR, DFEN, PPA  
-☢️ NUCLEAR/URANIUM: URNM, NLR, URA
-🌱 CLEAN ENERGY/CLIMATE: ICLN, TAN, QCLN, PBW, LIT, REMX
-📊 VOLATILITY/HEDGE: VIXY, VXX, SQQQ, SPXS
-💰 MARKET FLOWS: Any ETF with significant fund flows or institutional activity
-
-COACHING PRINCIPLES:
-✅ Focus on momentum and thematic narratives driving ETF flows
-✅ Identify early-stage trends before they go mainstream
-✅ Connect news to specific ETF opportunities, not just sectors
-✅ Balance momentum plays with risk management
-✅ Use fund flow data and technical momentum as key signals
-✅ Think like a tactical asset allocator, not a buy-and-hold investor
-
-RESPOND WITH VALID JSON ONLY - NO MARKDOWN OR EXPLANATIONS."""
+Keep responses focused, precise, and relevant to ETF positioning.
+"""
 
 def analyze_thematic_etf_news(headline, summary, snippet=""):
     # Compact logging for production, detailed for debug
@@ -350,13 +337,16 @@ class NewsAnalyzer:
                     confidence = analysis.get('confidence', 0)
                     etfs = analysis.get('affected_etfs', [])
                     
+                    # Focus ETFs using sector intelligence
+                    focused_etfs, primary_sector = categorize_etfs_by_sector(etfs)
+                    
                     # Track ETFs for pattern analysis
-                    all_mentioned_etfs.update(etfs)
+                    all_mentioned_etfs.update(focused_etfs)
                     
                     # Get fresh contextual insights for this specific analysis
-                    contextual_insight = memory.get_contextual_insight(analysis, etfs)
+                    contextual_insight = memory.get_contextual_insight(analysis, focused_etfs)
                     
-                    logger.info(f"📊 {signal} signal ({confidence}/10) - {article['title'][:60]}...")
+                    logger.info(f"📊 {signal} signal ({confidence}/10) - {primary_sector or 'Mixed'} - {article['title'][:60]}...")
                     
                     if contextual_insight:
                         logger.info(f"🧠 Context: {contextual_insight[:100]}...")
@@ -373,13 +363,14 @@ class NewsAnalyzer:
                         "title": article['title'],
                         "signal": signal,
                         "confidence": confidence,
-                        "etfs": etfs,
+                        "etfs": focused_etfs,  # Use focused ETFs instead of full list
+                        "sector": primary_sector,  # Add primary sector
                         "reasoning": analysis.get('reasoning', ''),
                         "timestamp": alert['timestamp'],
                         "link": article['link'],
                         "search_term": alert['search_term'],
-                        "image_url": article_image,  # Add image URL
-                        "contextual_insight": contextual_insight  # Add contextual insight
+                        "image_url": article_image,
+                        "contextual_insight": contextual_insight
                     }
                     
                     # Log to Notion and get the page URL
@@ -387,17 +378,13 @@ class NewsAnalyzer:
                     
                     # Send Pushover alert using the new utility
                     if confidence >= 7:
-                        # Enhance reasoning with contextual insight if available
-                        enhanced_reasoning = analysis.get('reasoning', '')
-                        if contextual_insight:
-                            enhanced_reasoning += f"\n\n🧠 Context: {contextual_insight}"
-                        
+                        # Keep Pushover alerts concise - contextual insights go to Notion only
                         send_energy_alert(
                             title=article['title'],
                             signal=signal,
                             confidence=confidence,
-                            reasoning=enhanced_reasoning,
-                            etfs=etfs,
+                            reasoning=analysis.get('reasoning', ''),  # No contextual insight here
+                            etfs=focused_etfs,  # Use focused ETFs for cleaner alerts
                             article_url=notion_url
                         )
 
@@ -608,33 +595,35 @@ class GmailPoller:
                 "Notion-Version": "2022-06-28"
             }
             
-            # Build comprehensive reasoning that includes contextual insights
+            # Build comprehensive reasoning with better formatting
             full_reasoning = analysis_data.get("reasoning", "")
             contextual_insight = analysis_data.get("contextual_insight", "")
             
             if contextual_insight:
-                full_reasoning += f"\n\n🧠 MARKET MEMORY INSIGHTS:\n{contextual_insight}"
+                # Format memory insights as bullet points for better readability
+                formatted_insights = []
+                for insight in contextual_insight.split('.'):
+                    insight = insight.strip()
+                    if insight and len(insight) > 10:
+                        formatted_insights.append(f"• {insight}")
+                
+                if formatted_insights:
+                    full_reasoning += f"\n\n🧠 MEMORY INSIGHTS:\n" + "\n".join(formatted_insights)
             
-            # Determine actionable recommendation based on signal and confidence
+            # Determine simple actionable recommendation
             confidence = analysis_data.get("confidence", 0)
             signal = analysis_data.get("signal", "Neutral")
             
-            action_recommendation = "HOLD - Monitor for developments"
-            if confidence >= 8:
+            # Simple BUY/SELL/HOLD logic
+            if confidence >= 7:
                 if signal == "Bullish":
-                    action_recommendation = "🟢 STRONG BUY - High confidence bullish signal"
+                    action_recommendation = "BUY"
                 elif signal == "Bearish":
-                    action_recommendation = "🔴 STRONG SELL - High confidence bearish signal"
-            elif confidence >= 6:
-                if signal == "Bullish":
-                    action_recommendation = "🟡 CONSIDER BUY - Moderate bullish signal"
-                elif signal == "Bearish":
-                    action_recommendation = "🟡 CONSIDER SELL - Moderate bearish signal"
-            elif confidence >= 4:
-                if signal == "Bullish":
-                    action_recommendation = "🟢 WATCH - Weak bullish signal"
-                elif signal == "Bearish":
-                    action_recommendation = "🔴 WATCH - Weak bearish signal"
+                    action_recommendation = "SELL"
+                else:
+                    action_recommendation = "HOLD"
+            else:
+                action_recommendation = "HOLD"
             
             data = {
                 "parent": {"database_id": self.notion_database_id},
@@ -651,17 +640,23 @@ class GmailPoller:
                     "ETFs": {
                         "multi_select": [{"name": etf} for etf in analysis_data.get("etfs", [])]
                     },
+                    "Sector": {
+                        "select": {"name": analysis_data.get("sector", "Mixed")}
+                    },
                     "Reasoning": {
                         "rich_text": [{"text": {"content": full_reasoning}}]
                     },
                     "Action": {
-                        "rich_text": [{"text": {"content": action_recommendation}}]
+                        "select": {"name": action_recommendation}
                     },
                     "Timestamp": {
                         "date": {"start": analysis_data.get("timestamp", datetime.now().isoformat())}
                     },
                     "Link": {
                         "url": analysis_data.get("link", "")
+                    },
+                    "Search Term": {
+                        "rich_text": [{"text": {"content": analysis_data.get("search_term", "")}}]
                     }
                 }
             }
@@ -749,6 +744,52 @@ class GmailPoller:
         except Exception as e:
             logger.error(f"Error logging patterns to Notion: {e}")
             return False
+
+def categorize_etfs_by_sector(etfs):
+    """Group ETFs by sector and return primary sector + key ETFs"""
+    sector_mapping = {
+        # Defense & Aerospace
+        'Defense': ['ITA', 'XAR', 'DFEN', 'PPA'],
+        # AI & Robotics
+        'AI': ['BOTZ', 'ROBO', 'IRBO', 'ARKQ', 'SMH', 'SOXX'],
+        # Clean Energy & Climate
+        'CleanTech': ['ICLN', 'TAN', 'QCLN', 'PBW', 'LIT', 'REMX'],
+        # Nuclear & Uranium
+        'Nuclear': ['URNM', 'NLR', 'URA'],
+        # Volatility & Inverse
+        'Volatility': ['VIXY', 'VXX', 'SQQQ', 'SPXS'],
+        # Traditional Sectors
+        'Energy': ['XLE'],
+        'Finance': ['XLF'],
+        'Tech': ['XLK', 'QQQ'],
+        'Market': ['SPY']
+    }
+    
+    # Find which sectors are represented
+    sector_matches = {}
+    for etf in etfs:
+        for sector, sector_etfs in sector_mapping.items():
+            if etf in sector_etfs:
+                if sector not in sector_matches:
+                    sector_matches[sector] = []
+                sector_matches[sector].append(etf)
+    
+    # Return top 2-3 ETFs per sector, prioritizing most mentioned
+    focused_etfs = []
+    primary_sector = None
+    
+    if sector_matches:
+        # Find primary sector (most ETFs mentioned)
+        primary_sector = max(sector_matches.keys(), key=lambda s: len(sector_matches[s]))
+        
+        # Take top 2-3 ETFs from primary sector + 1-2 from others
+        for sector, sector_etfs in sector_matches.items():
+            if sector == primary_sector:
+                focused_etfs.extend(sector_etfs[:3])  # Top 3 from primary
+            else:
+                focused_etfs.extend(sector_etfs[:2])  # Top 2 from others
+    
+    return focused_etfs, primary_sector
 
 # EXAMPLE USAGE
 if __name__ == "__main__":

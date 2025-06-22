@@ -86,7 +86,29 @@ def create_enhanced_notion_database():
             }
         },
         "Action": {
-            "rich_text": {}
+            "select": {
+                "options": [
+                    {"name": "BUY", "color": "green"},
+                    {"name": "SELL", "color": "red"},
+                    {"name": "HOLD", "color": "yellow"}
+                ]
+            }
+        },
+        "Sector": {
+            "select": {
+                "options": [
+                    {"name": "Defense", "color": "red"},
+                    {"name": "AI", "color": "blue"},
+                    {"name": "CleanTech", "color": "green"},
+                    {"name": "Nuclear", "color": "yellow"},
+                    {"name": "Volatility", "color": "gray"},
+                    {"name": "Energy", "color": "orange"},
+                    {"name": "Finance", "color": "brown"},
+                    {"name": "Tech", "color": "purple"},
+                    {"name": "Market", "color": "default"},
+                    {"name": "Mixed", "color": "default"}
+                ]
+            }
         },
         "Reasoning": {
             "rich_text": {}
@@ -242,8 +264,11 @@ def create_test_entry():
             "ETFs": {
                 "multi_select": [{"name": "BOTZ"}, {"name": "ROBO"}, {"name": "ARKQ"}]
             },
+            "Sector": {
+                "select": {"name": "AI"}
+            },
             "Action": {
-                "rich_text": [{"text": {"content": "🟢 STRONG BUY - High confidence bullish signal with positive thematic momentum"}}]
+                "select": {"name": "BUY"}
             },
             "Reasoning": {
                 "rich_text": [{"text": {"content": "Test analysis with enhanced thematic ETF coverage and contextual memory integration.\n\n🧠 MARKET MEMORY INSIGHTS:\nBOTZ has shown consecutive bullish signals over the past 3 days, indicating strong momentum building in AI/robotics sector. Institutional inflows accelerating."}}]

@@ -1,7 +1,7 @@
 import sqlite3
 import os
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
 import logging
 
@@ -9,11 +9,26 @@ logger = logging.getLogger(__name__)
 
 class MarketMemory:
     """
-    Contextual memory system for MarketMan to track signal patterns and provide continuity
+    Contextual memory system for MarketMan to track signal patterns and provide continuity.
     """
-    
-    def __init__(self, db_path: str = "marketman_memory.db"):
+
+    def __init__(
+        self,
+        db_path: str = "marketman_memory.db",
+        max_days_apart: int = 3,
+        confidence_threshold: int = 6,
+        volatility_window: int = 7,
+        min_consecutive: int = 2
+    ):
+        """
+        Contextual memory system for MarketMan to track signal patterns and provide continuity.
+        """
         self.db_path = db_path
+        # Configurable pattern detection thresholds
+        self.max_days_apart = max_days_apart
+        self.confidence_threshold = confidence_threshold
+        self.volatility_window = volatility_window
+        self.min_consecutive = min_consecutive
         self.init_database()
     
     def init_database(self):
@@ -21,7 +36,9 @@ class MarketMemory:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            
+            # Enable write-ahead logging for better concurrency
+            cursor.execute('PRAGMA journal_mode=WAL;')
+
             # Create signals table to track all analysis results
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS signals (
@@ -43,7 +60,7 @@ class MarketMemory:
                     article_url TEXT
                 )
             ''')
-            
+
             # Create patterns table to track detected patterns
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS patterns (
@@ -59,22 +76,22 @@ class MarketMemory:
                     created_at TEXT NOT NULL
                 )
             ''')
-            
+
             # Create index for faster queries
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_signals_date_etf 
                 ON signals (date, etfs)
             ''')
-            
+
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_signals_timestamp 
                 ON signals (timestamp)
             ''')
-            
+
             conn.commit()
             conn.close()
             logger.debug("✅ MarketMemory database initialized")
-            
+
         except Exception as e:
             logger.error(f"❌ Error initializing MarketMemory database: {e}")
     
@@ -83,9 +100,9 @@ class MarketMemory:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            
-            current_time = datetime.now()
-            
+
+            current_time = datetime.now(timezone.utc)
+
             cursor.execute('''
                 INSERT INTO signals (
                     timestamp, date, title, signal, confidence, etfs, reasoning,
@@ -109,11 +126,11 @@ class MarketMemory:
                 search_term,
                 article_url
             ))
-            
+
             conn.commit()
             conn.close()
             logger.debug(f"💾 Stored signal in memory: {analysis.get('signal')} for {title[:50]}...")
-            
+
         except Exception as e:
             logger.error(f"❌ Error storing signal in memory: {e}")
     
@@ -152,10 +169,10 @@ class MarketMemory:
     def detect_patterns(self, etf_symbol: str = None) -> List[Dict]:
         """Detect patterns like consecutive bearish/bullish signals"""
         patterns = []
-        
+
         try:
             recent_signals = self.get_recent_signals(days=14)  # Look back 2 weeks
-            
+
             # Group signals by ETF and analyze patterns
             etf_signals = {}
             for signal in recent_signals:
@@ -165,26 +182,52 @@ class MarketMemory:
                     if etf not in etf_signals:
                         etf_signals[etf] = []
                     etf_signals[etf].append(signal)
-            
+
             # Analyze each ETF for patterns
             for etf, signals in etf_signals.items():
                 # Sort by date
                 signals.sort(key=lambda x: x['timestamp'])
-                
+
                 # Look for consecutive signals
                 consecutive_patterns = self._find_consecutive_patterns(etf, signals)
                 patterns.extend(consecutive_patterns)
-                
+
                 # Look for signal reversals
                 reversal_patterns = self._find_reversal_patterns(etf, signals)
                 patterns.extend(reversal_patterns)
-                
+
                 # Look for volatility patterns
                 volatility_patterns = self._find_volatility_patterns(etf, signals)
                 patterns.extend(volatility_patterns)
-            
+
+            # Persist detected patterns
+            persist_conn = sqlite3.connect(self.db_path)
+            persist_cursor = persist_conn.cursor()
+            for pat in patterns:
+                persist_cursor.execute(
+                    '''
+                    INSERT INTO patterns (
+                        pattern_type, etf_symbol, start_date, end_date, consecutive_days,
+                        signal_type, average_confidence, description, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''',
+                    (
+                        pat.get('type'),
+                        pat.get('etf'),
+                        pat.get('start_date') or pat.get('date'),
+                        pat.get('end_date') or pat.get('date'),
+                        pat.get('streak') or pat.get('signal_changes'),
+                        pat.get('signal') or pat.get('signal_changes'),
+                        pat.get('avg_confidence') or pat.get('from_confidence', 0),
+                        pat.get('description'),
+                        datetime.now(timezone.utc).isoformat()
+                    )
+                )
+            persist_conn.commit()
+            persist_conn.close()
+
             return patterns
-            
+
         except Exception as e:
             logger.error(f"❌ Error detecting patterns: {e}")
             return []
@@ -192,31 +235,31 @@ class MarketMemory:
     def _find_consecutive_patterns(self, etf: str, signals: List[Dict]) -> List[Dict]:
         """Find consecutive same-signal patterns"""
         patterns = []
-        
+
         if len(signals) < 2:
             return patterns
-        
+
         current_streak = 1
         current_signal = signals[0]['signal']
         streak_start = signals[0]
         confidences = [signals[0]['confidence']]
-        
+
         for i in range(1, len(signals)):
             signal = signals[i]
-            
-            # Check if signal is within 3 days of previous
-            prev_date = datetime.fromisoformat(signals[i-1]['timestamp'])
-            curr_date = datetime.fromisoformat(signal['timestamp'])
+
+            # Check if signal is within max_days_apart of previous
+            prev_date = self._parse_timestamp_safely(signals[i-1]['timestamp'])
+            curr_date = self._parse_timestamp_safely(signal['timestamp'])
             days_apart = (curr_date - prev_date).days
-            
-            if signal['signal'] == current_signal and days_apart <= 3:
+
+            if signal['signal'] == current_signal and days_apart <= self.max_days_apart:
                 current_streak += 1
                 confidences.append(signal['confidence'])
             else:
                 # End of streak, check if it's significant
-                if current_streak >= 2 and current_signal in ['Bullish', 'Bearish']:
+                if current_streak >= self.min_consecutive and current_signal in ['Bullish', 'Bearish']:
                     avg_confidence = sum(confidences) / len(confidences)
-                    
+
                     pattern = {
                         'type': 'consecutive',
                         'etf': etf,
@@ -228,15 +271,15 @@ class MarketMemory:
                         'description': self._generate_consecutive_description(etf, current_signal, current_streak, avg_confidence)
                     }
                     patterns.append(pattern)
-                
+
                 # Start new streak
                 current_streak = 1
                 current_signal = signal['signal']
                 streak_start = signal
                 confidences = [signal['confidence']]
-        
+
         # Check final streak
-        if current_streak >= 2 and current_signal in ['Bullish', 'Bearish']:
+        if current_streak >= self.min_consecutive and current_signal in ['Bullish', 'Bearish']:
             avg_confidence = sum(confidences) / len(confidences)
             pattern = {
                 'type': 'consecutive',
@@ -249,26 +292,26 @@ class MarketMemory:
                 'description': self._generate_consecutive_description(etf, current_signal, current_streak, avg_confidence)
             }
             patterns.append(pattern)
-        
+
         return patterns
     
     def _find_reversal_patterns(self, etf: str, signals: List[Dict]) -> List[Dict]:
         """Find signal reversal patterns (bearish to bullish or vice versa)"""
         patterns = []
-        
+
         if len(signals) < 2:
             return patterns
-        
+
         for i in range(1, len(signals)):
             prev_signal = signals[i-1]
             curr_signal = signals[i]
-            
+
             # Check for significant reversals
             if ((prev_signal['signal'] == 'Bearish' and curr_signal['signal'] == 'Bullish') or
                 (prev_signal['signal'] == 'Bullish' and curr_signal['signal'] == 'Bearish')):
-                
+
                 # Check if both signals have decent confidence
-                if prev_signal['confidence'] >= 6 and curr_signal['confidence'] >= 6:
+                if prev_signal['confidence'] >= self.confidence_threshold and curr_signal['confidence'] >= self.confidence_threshold:
                     pattern = {
                         'type': 'reversal',
                         'etf': etf,
@@ -280,35 +323,36 @@ class MarketMemory:
                         'description': self._generate_reversal_description(etf, prev_signal['signal'], curr_signal['signal'])
                     }
                     patterns.append(pattern)
-        
+
         return patterns
     
     def _find_volatility_patterns(self, etf: str, signals: List[Dict]) -> List[Dict]:
         """Find high volatility patterns (frequent signal changes)"""
         patterns = []
-        
+
         if len(signals) < 4:
             return patterns
-        
-        # Look for 3+ signal changes in a week
-        recent_week = signals[-7:] if len(signals) >= 7 else signals
+
+        # Look for min_consecutive+ signal changes in a volatility_window
+        window = self.volatility_window
+        recent_window = signals[-window:] if len(signals) >= window else signals
         signal_changes = 0
-        
-        for i in range(1, len(recent_week)):
-            if recent_week[i]['signal'] != recent_week[i-1]['signal']:
+
+        for i in range(1, len(recent_window)):
+            if recent_window[i]['signal'] != recent_window[i-1]['signal']:
                 signal_changes += 1
-        
-        if signal_changes >= 2:
+
+        if signal_changes >= self.min_consecutive:
             pattern = {
                 'type': 'volatility',
                 'etf': etf,
                 'signal_changes': signal_changes,
-                'period_days': len(recent_week),
-                'date': recent_week[-1]['date'],
-                'description': f"{etf} showing high volatility with {signal_changes} signal changes in {len(recent_week)} days. Market uncertainty detected."
+                'period_days': len(recent_window),
+                'date': recent_window[-1]['date'],
+                'description': f"{etf} showing high volatility with {signal_changes} signal changes in {len(recent_window)} days. Market uncertainty detected."
             }
             patterns.append(pattern)
-        
+
         return patterns
     
     def _generate_consecutive_description(self, etf: str, signal: str, streak: int, avg_confidence: float) -> str:
@@ -416,18 +460,32 @@ class MarketMemory:
             
             cutoff_date = (datetime.now() - timedelta(days=days_to_keep)).strftime('%Y-%m-%d')
             
+            # Delete old signals
             cursor.execute('DELETE FROM signals WHERE date < ?', (cutoff_date,))
-            cursor.execute('DELETE FROM patterns WHERE start_date < ?', (cutoff_date,))
-            
             deleted_signals = cursor.rowcount
+            
+            # Delete old patterns
+            cursor.execute('DELETE FROM patterns WHERE start_date < ?', (cutoff_date,))
+            deleted_patterns = cursor.rowcount
+            
             conn.commit()
             conn.close()
             
-            if deleted_signals > 0:
-                logger.info(f"🧹 Cleaned up {deleted_signals} old records from MarketMemory")
+            total_deleted = deleted_signals + deleted_patterns
+            if total_deleted > 0:
+                logger.info(f"🧹 Cleaned up {deleted_signals} signals and {deleted_patterns} patterns from MarketMemory")
+            else:
+                logger.info(f"🧹 No records older than {days_to_keep} days found to clean up")
+                
+            return {
+                'deleted_signals': deleted_signals,
+                'deleted_patterns': deleted_patterns,
+                'cutoff_date': cutoff_date
+            }
                 
         except Exception as e:
             logger.error(f"❌ Error cleaning up old data: {e}")
+            return {'error': str(e)}
     
     def get_memory_stats(self) -> Dict:
         """Get statistics about stored memory"""
@@ -469,3 +527,31 @@ class MarketMemory:
         except Exception as e:
             logger.error(f"❌ Error getting memory stats: {e}")
             return {}
+
+    def _clear_memory(self):
+        """Utility: clear all entries from signals and patterns tables (for testing)."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM signals')
+        cursor.execute('DELETE FROM patterns')
+        conn.commit()
+        conn.close()
+    
+    def _parse_timestamp_safely(self, timestamp_str: str) -> datetime:
+        """Safely parse timestamp string handling timezone awareness"""
+        try:
+            # Handle timezone-aware timestamps
+            if 'T' in timestamp_str and ('+' in timestamp_str or 'Z' in timestamp_str):
+                if timestamp_str.endswith('Z'):
+                    timestamp_str = timestamp_str.replace('Z', '+00:00')
+                return datetime.fromisoformat(timestamp_str)
+            else:
+                # Handle naive timestamps - assume UTC
+                dt = datetime.fromisoformat(timestamp_str)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+        except Exception as e:
+            logger.warning(f"⚠️ Error parsing timestamp {timestamp_str}: {e}")
+            # Fallback to current time with UTC timezone
+            return datetime.now(timezone.utc)
