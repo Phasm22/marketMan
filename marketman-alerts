@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+"""
+MarketMan Alert Management CLI
+Provides commands for managing alert batching and delivery
+"""
+import argparse
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from alert_batcher import AlertBatcher, BatchStrategy, get_queue_stats, process_alert_queue
+from datetime import datetime
+
+def cmd_stats(args):
+    """Show alert queue statistics"""
+    stats = get_queue_stats()
+    print("📊 Alert Queue Statistics")
+    print("="*50)
+    print(f"Total Pending Alerts: {stats['total_pending']}")
+    
+    print("\n📋 Pending by Strategy:")
+    for strategy, count in stats['pending_by_strategy'].items():
+        emoji = {"immediate": "⚡", "time_window": "⏰", "daily_digest": "📅", "smart_batch": "🧠"}.get(strategy, "📝")
+        print(f"  {emoji} {strategy}: {count} alerts")
+    
+    if stats['recent_batches']:
+        print("\n📤 Recent Batches (Last 7 Days):")
+        for strategy, data in stats['recent_batches'].items():
+            rate = data['success_rate'] * 100
+            emoji = {"immediate": "⚡", "time_window": "⏰", "daily_digest": "📅", "smart_batch": "🧠"}.get(strategy, "📝")
+            print(f"  {emoji} {strategy}: {data['total_batches']} sent, {rate:.1f}% success rate")
+    else:
+        print("\n📭 No recent batches found")
+
+def cmd_process(args):
+    """Process pending alert batches"""
+    print("🚀 Processing alert queue...")
+    results = process_alert_queue()
+    
+    if results:
+        print("\n📤 Batch Results:")
+        for strategy, success in results.items():
+            status = "✅ Sent" if success else "❌ Failed"
+            emoji = {"immediate": "⚡", "time_window": "⏰", "daily_digest": "📅", "smart_batch": "🧠"}.get(strategy, "📝")
+            print(f"  {emoji} {strategy}: {status}")
+    else:
+        print("📭 No batches were ready to send")
+
+def cmd_cleanup(args):
+    """Clean up old batch records"""
+    batcher = AlertBatcher()
+    days = args.days if hasattr(args, 'days') else 7
+    batcher.cleanup_old_batches(days)
+    print(f"🧹 Cleaned up batch records older than {days} days")
+
+def cmd_test_batch(args):
+    """Test the batching system with sample alerts"""
+    from alert_batcher import queue_alert
+    
+    print("🧪 Testing alert batching system...")
+    
+    # Sample test alerts
+    test_alerts = [
+        {
+            "signal": "Bullish",
+            "confidence": 9,
+            "title": "Major Clean Energy Investment Bill Passes Senate",
+            "reasoning": "Bipartisan legislation allocates $75B for renewable infrastructure over 5 years",
+            "etfs": ["ICLN", "TAN", "QCLN"],
+            "sector": "Clean Energy",
+            "search_term": "clean energy legislation"
+        },
+        {
+            "signal": "Bearish", 
+            "confidence": 8,
+            "title": "OPEC+ Announces Surprise Production Cuts",
+            "reasoning": "Oil supply reduction of 2M barrels/day could drive energy prices higher",
+            "etfs": ["XLE", "USO", "XOP"],
+            "sector": "Traditional Energy",
+            "search_term": "OPEC production cuts"
+        },
+        {
+            "signal": "Bullish",
+            "confidence": 7,
+            "title": "Tesla Reports Record Q4 Deliveries",
+            "reasoning": "EV adoption accelerating with 40% YoY growth in key markets",
+            "etfs": ["LIT", "DRIV", "ARKQ"],
+            "sector": "Electric Vehicles",
+            "search_term": "tesla earnings"
+        }
+    ]
+    
+    # Queue test alerts
+    alert_ids = []
+    for alert in test_alerts:
+        alert_id = queue_alert(
+            signal=alert["signal"],
+            confidence=alert["confidence"],
+            title=alert["title"],
+            reasoning=alert["reasoning"],
+            etfs=alert["etfs"],
+            sector=alert["sector"],
+            search_term=alert["search_term"],
+            strategy=BatchStrategy.SMART_BATCH
+        )
+        alert_ids.append(alert_id)
+        print(f"✅ Queued: {alert_id[:8]} - {alert['title'][:40]}...")
+    
+    print(f"\n📋 Queued {len(alert_ids)} test alerts")
+    print("💡 Run 'marketman-alerts process' to send any ready batches")
+    print("💡 Run 'marketman-alerts stats' to see queue status")
+
+def cmd_config(args):
+    """Show current batching configuration"""
+    from news_gpt_analyzer import CURRENT_BATCH_STRATEGY, ALERT_STRATEGY
+    
+    print("⚙️  Alert Batching Configuration")
+    print("="*40)
+    print(f"Current Strategy: {ALERT_STRATEGY}")
+    print(f"Batch Mode: {CURRENT_BATCH_STRATEGY.value}")
+    
+    print("\n📚 Available Strategies:")
+    strategies = {
+        "immediate": "⚡ Send alerts immediately (current behavior)",
+        "time_window": "⏰ Batch alerts in 30-minute windows or groups of 3+", 
+        "daily_digest": "📅 Send one summary per day",
+        "smart_batch": "🧠 Intelligent batching based on confidence and timing"
+    }
+    
+    for name, desc in strategies.items():
+        current = " (CURRENT)" if name == ALERT_STRATEGY else ""
+        print(f"  {desc}{current}")
+    
+    print("\n💡 To change strategy, set ALERT_STRATEGY in your .env file")
+    print("   Example: ALERT_STRATEGY=daily_digest")
+
+def cmd_show_pending(args):
+    """Show pending alerts in detail"""
+    batcher = AlertBatcher()
+    pending = batcher.get_pending_alerts()
+    
+    if not pending:
+        print("📭 No pending alerts")
+        return
+    
+    print(f"📋 {len(pending)} Pending Alerts")
+    print("="*60)
+    
+    # Group by strategy
+    by_strategy = {}
+    for alert in pending:
+        strategy = args.strategy if hasattr(args, 'strategy') and args.strategy else "all"
+        if strategy != "all":
+            # Filter by strategy if specified
+            continue
+        
+        if alert.sector not in by_strategy:
+            by_strategy[alert.sector] = []
+        by_strategy[alert.sector].append(alert)
+    
+    for sector, alerts in by_strategy.items():
+        print(f"\n🏢 {sector} ({len(alerts)} alerts)")
+        print("-" * 30)
+        
+        for alert in sorted(alerts, key=lambda x: x.timestamp, reverse=True):
+            age_mins = int((datetime.now() - alert.timestamp).total_seconds() / 60)
+            signal_emoji = {"Bullish": "↗️", "Bearish": "↘️", "Neutral": "→"}.get(alert.signal, "?")
+            
+            print(f"  {signal_emoji} {alert.confidence}/10 | {age_mins}min ago")
+            print(f"    {alert.title[:50]}{'...' if len(alert.title) > 50 else ''}")
+            print(f"    ETFs: {', '.join(alert.etfs[:3])}{'...' if len(alert.etfs) > 3 else ''}")
+            print(f"    ID: {alert.alert_id[:8]}")
+            print()
+
+def main():
+    parser = argparse.ArgumentParser(description="MarketMan Alert Management")
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    
+    # Stats command
+    stats_parser = subparsers.add_parser('stats', help='Show alert queue statistics')
+    
+    # Process command  
+    process_parser = subparsers.add_parser('process', help='Process pending alert batches')
+    
+    # Cleanup command
+    cleanup_parser = subparsers.add_parser('cleanup', help='Clean up old batch records')
+    cleanup_parser.add_argument('--days', type=int, default=7, 
+                               help='Delete records older than N days (default: 7)')
+    
+    # Test command
+    test_parser = subparsers.add_parser('test', help='Test the batching system')
+    
+    # Config command
+    config_parser = subparsers.add_parser('config', help='Show batching configuration')
+    
+    # Show pending command
+    pending_parser = subparsers.add_parser('pending', help='Show pending alerts')
+    pending_parser.add_argument('--strategy', choices=['immediate', 'time_window', 'daily_digest', 'smart_batch'],
+                               help='Filter by batching strategy')
+    
+    args = parser.parse_args()
+    
+    if not args.command:
+        parser.print_help()
+        return
+    
+    try:
+        if args.command == 'stats':
+            cmd_stats(args)
+        elif args.command == 'process':
+            cmd_process(args)
+        elif args.command == 'cleanup':
+            cmd_cleanup(args)
+        elif args.command == 'test':
+            cmd_test_batch(args)
+        elif args.command == 'config':
+            cmd_config(args)
+        elif args.command == 'pending':
+            cmd_show_pending(args)
+        else:
+            print(f"Unknown command: {args.command}")
+            parser.print_help()
+    
+    except KeyboardInterrupt:
+        print("\n👋 Cancelled by user")
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        if os.getenv("DEBUG", "false").lower() == "true":
+            import traceback
+            traceback.print_exc()
+
+if __name__ == "__main__":
+    main()

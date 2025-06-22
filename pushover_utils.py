@@ -87,12 +87,12 @@ def send_energy_alert(signal, confidence, title, reasoning, etfs=None, article_u
     Returns:
         bool: True if sent successfully
     """
-    # Determine priority based on confidence
+    # Determine priority based on confidence - keep it professional, not alarming
     if confidence >= 9:
-        priority = 1  # High priority
+        priority = 0  # Normal priority (even for 9/10)
         alert_level = "CRITICAL"
     elif confidence >= 8:
-        priority = 1  # High priority
+        priority = 0  # Normal priority 
         alert_level = "HIGH"
     elif confidence >= 7:
         priority = 0  # Normal priority
@@ -100,26 +100,26 @@ def send_energy_alert(signal, confidence, title, reasoning, etfs=None, article_u
     else:
         return False  # Don't send low confidence alerts
     
-    # Format signal with emoji
-    signal_emoji = {
-        "Bullish": "�",
-        "Bearish": "📉", 
-        "Neutral": "➖"
-    }.get(signal, "❓")
+    # Use text indicators instead of emojis for better compatibility
+    signal_indicator = {
+        "Bullish": "↗ BULLISH",
+        "Bearish": "↘ BEARISH", 
+        "Neutral": "→ NEUTRAL"
+    }.get(signal, "? UNKNOWN")
     
     # Build concise message - keep it short and actionable
-    message = f"""{signal_emoji} {signal.upper()} Signal ({confidence}/10)
+    message = f"""{signal_indicator} Signal ({confidence}/10)
 
 {title[:80]}{'...' if len(title) > 80 else ''}
 
-💡 {reasoning}"""
+Reason: {reasoning}"""
     
-    # Add affected ETFs if available
+    # Add affected ETFs if available - use simple text formatting
     if etfs and len(etfs) > 0:
         etf_list = ', '.join(etfs[:4])  # Show max 4 ETFs
         if len(etfs) > 4:
             etf_list += f" +{len(etfs)-4} more"
-        message += f"\n\n🎯 ETFs: {etf_list}"
+        message += f"\n\nETFs: {etf_list}"
     
     alert_title = f"MarketMan {alert_level}"
     
@@ -128,7 +128,7 @@ def send_energy_alert(signal, confidence, title, reasoning, etfs=None, article_u
         title=alert_title,
         priority=priority,
         url=article_url,
-        url_title="📊 Full Analysis" if article_url else None,
+        url_title="Full Analysis" if article_url else None,
         image_url=image_url
     )
 

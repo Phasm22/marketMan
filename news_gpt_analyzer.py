@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import logging
 from pushover_utils import send_energy_alert, send_system_alert
 from market_memory import MarketMemory
+from alert_batcher import queue_alert, process_alert_queue, BatchStrategy
 
 # Set up logging with debug control
 DEBUG_MODE = os.getenv("DEBUG", "false").lower() == "true"
@@ -21,37 +22,45 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
+# Alert batching configuration
+ALERT_STRATEGY = os.getenv("ALERT_STRATEGY", "smart_batch").lower()
+BATCH_STRATEGY_MAP = {
+    "immediate": BatchStrategy.IMMEDIATE,
+    "time_window": BatchStrategy.TIME_WINDOW,
+    "daily_digest": BatchStrategy.DAILY_DIGEST,
+    "smart_batch": BatchStrategy.SMART_BATCH
+}
+CURRENT_BATCH_STRATEGY = BATCH_STRATEGY_MAP.get(ALERT_STRATEGY, BatchStrategy.SMART_BATCH)
+
 # Initialize MarketMemory for contextual tracking
 memory = MarketMemory()
 
 def get_microlink_image(url):
-    """Fetch article preview image using Microlink API"""
+    """Fetch article preview image using Microlink API (OG image, fallback to logo)"""
     try:
         logger.debug(f"🖼️ Fetching image for: {url}")
         params = {
             "url": url,
-            "screenshot": "true",
-            "meta": "false"
+            "meta": "true",
+            "screenshot": "false"
         }
-        
         response = requests.get("https://api.microlink.io", params=params, timeout=10)
         if response.status_code == 200:
             data = response.json().get("data", {})
-            
-            # Try different image sources in order of preference
-            for image_key in ["screenshot", "image", "logo"]:
-                image_data = data.get(image_key, {})
-                if image_data and image_data.get("url"):
-                    image_url = image_data["url"]
-                    logger.info(f"✅ Found {image_key} image")
-                    return image_url
-            
-            logger.warning("⚠️ No image found in Microlink response")
+            image_url = data.get("image", {}).get("url")
+            if image_url:
+                logger.info("✅ Found OG image via Microlink")
+                return image_url
+            # Fallback to logo if no OG image
+            logo_url = data.get("logo", {}).get("url")
+            if logo_url:
+                logger.info("✅ Fallback to logo via Microlink")
+                return logo_url
+            logger.warning("⚠️ No image or logo found in Microlink response")
         else:
             logger.warning(f"⚠️ Microlink API error: {response.status_code}")
     except Exception as e:
         logger.warning(f"⚠️ Error fetching image: {e}")
-    
     return None
 
 def clean_google_redirect_url(url):
@@ -376,17 +385,23 @@ class NewsAnalyzer:
                     # Log to Notion and get the page URL
                     notion_url = self.gmail_poller.log_to_notion(analysis_data)
                     
-                    # Send Pushover alert using the new utility
+                    # Queue alert for batching (replaces direct Pushover send)
                     if confidence >= 7:
-                        # Keep Pushover alerts concise - contextual insights go to Notion only
-                        send_energy_alert(
-                            title=article['title'],
+                        logger.info(f"📋 Queueing alert: {signal} ({confidence}/10) - {article['title'][:50]}...")
+                        alert_id = queue_alert(
                             signal=signal,
                             confidence=confidence,
-                            reasoning=analysis.get('reasoning', ''),  # No contextual insight here
-                            etfs=focused_etfs,  # Use focused ETFs for cleaner alerts
-                            article_url=notion_url
+                            title=article['title'],
+                            reasoning=analysis.get('reasoning', ''),
+                            etfs=focused_etfs,
+                            sector=primary_sector,
+                            article_url=notion_url,
+                            search_term=alert['search_term'],
+                            strategy=CURRENT_BATCH_STRATEGY
                         )
+                        logger.info(f"✅ Alert queued: {alert_id[:8]}")
+                    else:
+                        logger.info(f"⏭️ Skipping low confidence alert: {confidence}/10")
 
                     logger.info(f"✅ Processed: {signal} ({confidence}/10)")
 
@@ -411,6 +426,17 @@ class NewsAnalyzer:
                 logger.info(f"📊 Found {len(significant_patterns)} significant patterns")
                 # Log significant patterns to Notion
                 self.gmail_poller.log_memory_patterns_to_notion(significant_patterns)
+        
+        # Process any pending alert batches at the end of the cycle
+        logger.info("📱 Processing alert queue...")
+        batch_results = process_alert_queue()
+        
+        if batch_results:
+            for strategy, success in batch_results.items():
+                status = "✅" if success else "❌"
+                logger.info(f"{status} Batch sent via {strategy} strategy")
+        else:
+            logger.info("📭 No batches ready to send")
 
 def send_email_alert(subject, body, recipient):
     # Placeholder for future email alerting implementation
@@ -583,37 +609,34 @@ class GmailPoller:
         return articles
     
     def log_to_notion(self, analysis_data):
-        """Log analysis result to Notion database with enhanced contextual insights"""
+        """Log analysis result to Notion database with enhanced contextual insights and Notion children blocks"""
         if not self.notion_token or not self.notion_database_id:
             logger.debug("Notion credentials not configured, skipping logging")
             return False
-        
+
         try:
             headers = {
                 "Authorization": f"Bearer {self.notion_token}",
                 "Content-Type": "application/json",
                 "Notion-Version": "2022-06-28"
             }
-            
-            # Build comprehensive reasoning with better formatting
+
+            # Build comprehensive reasoning (no longer append memory insights inline)
             full_reasoning = analysis_data.get("reasoning", "")
             contextual_insight = analysis_data.get("contextual_insight", "")
-            
+
+            # Prepare formatted_insights for use in Notion children blocks (not for inline reasoning)
+            formatted_insights = []
             if contextual_insight:
-                # Format memory insights as bullet points for better readability
-                formatted_insights = []
                 for insight in contextual_insight.split('.'):
                     insight = insight.strip()
                     if insight and len(insight) > 10:
-                        formatted_insights.append(f"• {insight}")
-                
-                if formatted_insights:
-                    full_reasoning += f"\n\n🧠 MEMORY INSIGHTS:\n" + "\n".join(formatted_insights)
-            
+                        formatted_insights.append(insight)
+
             # Determine simple actionable recommendation
             confidence = analysis_data.get("confidence", 0)
             signal = analysis_data.get("signal", "Neutral")
-            
+
             # Simple BUY/SELL/HOLD logic
             if confidence >= 7:
                 if signal == "Bullish":
@@ -624,7 +647,7 @@ class GmailPoller:
                     action_recommendation = "HOLD"
             else:
                 action_recommendation = "HOLD"
-            
+
             data = {
                 "parent": {"database_id": self.notion_database_id},
                 "properties": {
@@ -660,7 +683,7 @@ class GmailPoller:
                     }
                 }
             }
-            
+
             # Add cover image if available (this works without needing an Image property)
             image_url = analysis_data.get("image_url")
             if image_url:
@@ -669,13 +692,53 @@ class GmailPoller:
                     "external": {"url": image_url}
                 }
                 logger.info(f"🖼️ Adding cover image to Notion page")
-            
+
+            # --- Build Notion children blocks ---
+            # 1. Reasoning summary (first 200 chars of full_reasoning)
+            reasoning_summary = full_reasoning[:200]
+            if len(full_reasoning) > 200:
+                reasoning_summary += "..."
+
+            children = []
+            # Add callout summary block
+            children.append({
+                "object": "block",
+                "type": "callout",
+                "callout": {
+                    "icon": {"type": "emoji", "emoji": "📰"},
+                    "rich_text": [{"type": "text", "text": {"content": reasoning_summary}}]
+                }
+            })
+
+            # Add memory insights toggle block if available
+            if formatted_insights:
+                toggle_block = {
+                    "object": "block",
+                    "type": "toggle",
+                    "toggle": {
+                        "rich_text": [{"type": "text", "text": {"content": "🧠 Memory Insights"}}],
+                        "children": [
+                            {
+                                "object": "block",
+                                "type": "bulleted_list_item",
+                                "bulleted_list_item": {
+                                    "rich_text": [{"type": "text", "text": {"content": insight}}]
+                                }
+                            } for insight in formatted_insights
+                        ]
+                    }
+                }
+                children.append(toggle_block)
+
+            # Assign children blocks to the data dict
+            data["children"] = children
+
             response = requests.post(
                 "https://api.notion.com/v1/pages",
                 headers=headers,
                 json=data
             )
-            
+
             if response.status_code == 200:
                 result = response.json()
                 page_url = result.get('url', '')
@@ -688,7 +751,7 @@ class GmailPoller:
                 else:
                     logger.error(f"Failed to log to Notion: {error_data}")
                 return False
-                
+
         except Exception as e:
             logger.error(f"Error logging to Notion: {e}")
             return False
@@ -821,21 +884,38 @@ if __name__ == "__main__":
             print(json.dumps(analysis_result, indent=2))
             print("="*60)
             
-            # Test Pushover alert
-            logger.info("📱 Testing enhanced Pushover alert...")
-            success = send_energy_alert(
-                title=headline,
+            # Test Pushover alert using batching system
+            logger.info("📱 Testing alert batching...")
+            
+            # Get focused ETFs and primary sector
+            focused_etfs, primary_sector = categorize_etfs_by_sector(analysis_result.get('affected_etfs', []))
+            
+            # Queue the test alert
+            alert_id = queue_alert(
                 signal=analysis_result.get('signal', 'Neutral'),
                 confidence=analysis_result.get('confidence', 0),
+                title=headline,
                 reasoning=analysis_result.get('reasoning', ''),
-                etfs=analysis_result.get('affected_etfs', []),
-                article_url=None
+                etfs=focused_etfs,
+                sector=primary_sector or 'AI',
+                search_term="test_analysis",
+                strategy=CURRENT_BATCH_STRATEGY
             )
             
-            if success:
-                logger.info("✅ Enhanced coaching alert sent successfully!")
+            logger.info(f"✅ Test alert queued: {alert_id[:8]}")
+            
+            # Process the queue to send any ready batches
+            logger.info("🚀 Processing alert queue...")
+            batch_results = process_alert_queue()
+            
+            if batch_results:
+                for strategy, success in batch_results.items():
+                    if success:
+                        logger.info("✅ Enhanced batched alert sent successfully!")
+                    else:
+                        logger.warning("⚠️ Batched alert failed to send")
             else:
-                logger.warning("⚠️ Alert not sent (may be due to confidence threshold or missing credentials)")
+                logger.info("📋 Alert queued but not ready to send yet (check strategy logic)")
         else:
             logger.error("❌ Test analysis failed")
     else:
