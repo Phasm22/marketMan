@@ -1,4 +1,4 @@
-# � MarketMan
+# 🚀 MarketMan
 
 **Professional ETF Market Intelligence & Alert System**
 
