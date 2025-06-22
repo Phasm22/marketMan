@@ -5,6 +5,7 @@ import email
 import re
 import json
 import requests
+import time
 from datetime import datetime
 from email.header import decode_header
 from dotenv import load_dotenv
@@ -43,34 +44,50 @@ memory = MarketMemory()
 def get_microlink_image(url):
     """Fetch article preview image using Microlink API (OG image, fallback to logo)"""
     try:
-        logger.debug(f"🖼️ Fetching image for: {url}")
+        logger.debug(f"🖼️ Fetching hero image for: {url}")
         params = {
             "url": url,
             "meta": "true",
-            "screenshot": "false"
+            "screenshot": "false",
+            "palette": "false",  # Don't need color analysis
+            "video": "false"     # Don't need video processing
         }
-        # Add delay to avoid rate limiting
-        time.sleep(1)
-        response = requests.get("https://api.microlink.io", params=params, timeout=10)
+        
+        response = requests.get("https://api.microlink.io", params=params, timeout=15)
         if response.status_code == 200:
-            data = response.json().get("data", {})
-            image_url = data.get("image", {}).get("url")
-            if image_url:
-                logger.info("✅ Found OG image via Microlink")
-                return image_url
+            try:
+                json_data = response.json()
+                data = json_data.get("data", {}) if json_data else {}
+            except ValueError:
+                logger.warning("⚠️ Failed to parse Microlink JSON response")
+                return None
+            
+            # Prefer OG image (hero image)
+            image_data = data.get("image", {})
+            if image_data and isinstance(image_data, dict):
+                image_url = image_data.get("url")
+                if image_url:
+                    logger.info(f"✅ Found hero image via Microlink: {image_url[:60]}...")
+                    return image_url
+                
             # Fallback to logo if no OG image
-            logo_url = data.get("logo", {}).get("url")
-            if logo_url:
-                logger.info("✅ Fallback to logo via Microlink")
-                return logo_url
-            logger.warning("⚠️ No image or logo found in Microlink response")
+            logo_data = data.get("logo", {})
+            if logo_data and isinstance(logo_data, dict):
+                logo_url = logo_data.get("url")
+                if logo_url:
+                    logger.info(f"✅ Using logo as fallback: {logo_url[:60]}...")
+                    return logo_url
+                
+            logger.debug("⚠️ No hero image or logo found in Microlink response")
+            
         elif response.status_code == 429:
-            logger.warning(f"⚠️ Microlink API rate limited (429) - skipping image for this article")
+            logger.warning(f"⚠️ Microlink API rate limited (429) - will retry later")
             return None
         else:
             logger.warning(f"⚠️ Microlink API error: {response.status_code}")
+            
     except Exception as e:
-        logger.warning(f"⚠️ Error fetching image: {e}")
+        logger.warning(f"⚠️ Error fetching hero image: {e}")
     return None
 
 def clean_google_redirect_url(url):
@@ -349,12 +366,16 @@ class NewsAnalyzer:
                     if not analysis:
                         continue
 
-                    # Fetch article image using Microlink (with rate limiting)
+                    # Fetch article image using Microlink (for Notion hero images)
                     article_image = None
                     try:
+                        # Add small delay between requests to be respectful
+                        time.sleep(0.5)
                         article_image = get_microlink_image(article['link'])
+                        if article_image:
+                            logger.info(f"🖼️ Hero image ready for Notion")
                     except Exception as e:
-                        logger.warning(f"⚠️ Skipping image fetch due to error: {e}")
+                        logger.warning(f"⚠️ Skipping hero image due to error: {e}")
                         article_image = None
                     
                     signal = analysis.get('signal', 'Neutral')

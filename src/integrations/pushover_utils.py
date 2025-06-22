@@ -11,9 +11,9 @@ load_dotenv()
 PUSHOVER_USER_KEY = os.getenv("PUSHOVER_USER")
 PUSHOVER_API_TOKEN = os.getenv("PUSHOVER_TOKEN")
 
-def send_pushover_notification(message, title="Alert", priority=0, url=None, url_title=None, image_url=None):
+def send_pushover_notification(message, title="Alert", priority=0, url=None, url_title=None):
     """
-    Send notification via Pushover
+    Send notification via Pushover (text only - images are for Notion)
     
     Args:
         message (str): Main notification message
@@ -21,7 +21,6 @@ def send_pushover_notification(message, title="Alert", priority=0, url=None, url
         priority (int): -2 (silent), -1 (quiet), 0 (normal), 1 (high), 2 (emergency)
         url (str): Optional URL to include
         url_title (str): Optional title for the URL
-        image_url (str): Optional image URL to attach
     
     Returns:
         bool: True if successful, False otherwise
@@ -44,22 +43,8 @@ def send_pushover_notification(message, title="Alert", priority=0, url=None, url
     if url_title:
         data["url_title"] = url_title
 
-    files = None
-    # Add image attachment if provided
-    if image_url:
-        try:
-            print(f"📷 Downloading image for Pushover: {image_url[:80]}...")
-            img_response = requests.get(image_url, timeout=10)
-            if img_response.status_code == 200 and len(img_response.content) < 2500000:  # 2.5MB limit
-                files = {"attachment": ("article_image.jpg", img_response.content, "image/jpeg")}
-                print("✅ Image attached to Pushover notification")
-            else:
-                print("⚠️  Image too large or failed to download for Pushover")
-        except Exception as e:
-            print(f"⚠️  Error downloading image for Pushover: {e}")
-
     try:
-        response = requests.post("https://api.pushover.net/1/messages.json", data=data, files=files)
+        response = requests.post("https://api.pushover.net/1/messages.json", data=data)
         if response.status_code == 200:
             print(f"✅ Pushover sent: {title}")
             return True
@@ -70,9 +55,9 @@ def send_pushover_notification(message, title="Alert", priority=0, url=None, url
         print(f"🔥 Error sending Pushover notification: {e}")
         return False
 
-def send_energy_alert(signal, confidence, title, reasoning, etfs=None, article_url=None, image_url=None, analysis=None):
+def send_energy_alert(signal, confidence, title, reasoning, etfs=None, article_url=None, analysis=None):
     """
-    Concise energy sector alerts - detailed analysis goes to Notion
+    Concise energy sector alerts - detailed analysis goes to Notion (no images in Pushover)
     
     Args:
         signal (str): Bullish/Bearish/Neutral
@@ -81,7 +66,6 @@ def send_energy_alert(signal, confidence, title, reasoning, etfs=None, article_u
         reasoning (str): Brief AI reasoning (contextual insights stay in Notion)
         etfs (list): Affected ETFs
         article_url (str): Link to Notion page with full analysis
-        image_url (str): Article preview image
         analysis (dict): Full analysis (not used in alert to keep it concise)
     
     Returns:
@@ -128,8 +112,7 @@ Reason: {reasoning}"""
         title=alert_title,
         priority=priority,
         url=article_url,
-        url_title="Full Analysis" if article_url else None,
-        image_url=image_url
+        url_title="Full Analysis" if article_url else None
     )
 
 def send_system_alert(service_name, status, details=None):
