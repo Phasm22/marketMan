@@ -1,396 +1,250 @@
-# 📧 MarketMan v2.0: Automated News & System Monitor
+# � MarketMan
 
-An AI-powered system that monitors energy sector news and your infrastructure, delivering unified Pushover alerts with professional coaching insights and real-time market data.
+**Professional ETF Market Intelligence & Alert System**
 
-## 🚀 Features
+MarketMan transforms Google Alerts into actionable ETF trading signals using AI analysis, contextual memory, and intelligent batching. Built for serious thematic ETF investors who need precise, timely market intelligence without notification fatigue.
 
-- **📧 Gmail Integration**: Automated Google Alerts via IMAP
-- **🤖 Coach Alex Analysis**: AI-powered energy sector signal detection with professional coaching tone
-- **💰 Real-Time Prices**: Live ETF price integration via yfinance
-- **🖥️ System Monitoring**: Server ping monitoring (like yang.prox)
-- **📱 Enhanced Alerts**: Rich Pushover notifications with images and strategic insights
-- **📊 Smart Filtering**: Energy companies, renewables, oil & gas focus with confidence scoring
-- **🗃️ Visual Notion Logging**: Analysis results with article images and clickable links
-- **🧠 Contextual Memory**: Track signal patterns, detect consecutive alerts, and provide historical context
-- **🎯 ETF Focus**: XLE, ICLN, TAN, QCLN, PBW recommendations with live pricing
-- **⚡ CLI Interface**: Easy testing, monitoring, memory queries, and deployment
+![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
+![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4-green.svg)
+![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-## 🚀 What's New in v2.0
+## 🎯 What It Does
 
-### ✅ **Contextual Memory System**
-- **Pattern Detection**: Tracks consecutive bullish/bearish signals for each ETF
-- **Historical Context**: "ICLN has been in back-to-back bearish alerts. Possible long-term sector drift forming."
-- **SQLite Storage**: Lightweight, persistent memory with pattern recognition
-- **Memory CLI**: Query recent patterns, stats, and cleanup old data
-- **AI Integration**: Contextual insights automatically included in analysis prompts
+- **📰 Analyzes Google Alerts** → AI-powered ETF signal extraction
+- **🧠 Contextual Memory** → Pattern detection and historical insights  
+- **📊 Real-time Data** → Live ETF prices and market snapshots
+- **🎯 Smart Batching** → Intelligent notification grouping
+- **📝 Notion Integration** → Comprehensive analysis logging
+- **📱 Pushover Alerts** → Professional mobile notifications
 
-### ✅ **Professional Coaching Analysis**
-- **Coach Alex**: 15+ years energy markets strategist persona
-- **Strategic Framework**: Market impact, price action, strategic advice, risk factors
-- **Real-Time Context**: Live ETF prices integrated into analysis
-- **Professional Tone**: Actionable guidance with confident, strategic perspective
+## ⚡ Quick Start
 
-### ✅ **Rich Visual Experience**
-- **Microlink Integration**: Auto-fetches article preview images and screenshots
-- **Notion Cover Images**: Each analysis gets a visual preview in the database
-- **Pushover Image Attachments**: Notifications include article images (when available)
-- **Enhanced Notifications**: Professional coaching insights with live market data
-
-### ✅ **Unified Pushover System**
-- Reusable `pushover_utils.py` matching proven server monitor patterns
-- Smart energy alerts with auto-formatting and priorities
-- System alerts compatible with existing yang.prox workflow
-- Clean notification links to Notion analysis pages
-
-### ✅ **Enhanced Architecture** 
-- Modular design with clear separation of concerns
-- Production-ready error handling and recovery
-- Clean, professional logging with debug mode
-- Systemd service support for automated deployment
-
-## 🛠️ Technical Implementation
-
-### **Key Functions & Features**
-1. **`MarketMemory`** - SQLite-based contextual memory with pattern detection
-2. **`get_microlink_image(url)`** - Fetches article preview images and screenshots
-3. **`get_etf_prices(symbols)`** - Real-time ETF price fetching with yfinance
-4. **Enhanced `log_to_notion()`** - Adds cover images to Notion pages
-5. **Enhanced `send_pushover_notification()`** - Image attachments and rich formatting
-6. **`analyze_energy_news()`** - Coach Alex strategic analysis with market context and memory insights
-
-### **Smart Features**
-- ⏱️ **Timeout Protection**: 10-second limits prevent hanging
-- 📏 **Size Limits**: Respects Pushover 2.5MB image limit  
-- 🔄 **Fallback Logic**: Multiple image sources (screenshot/image/logo)
-- 🛡️ **Error Handling**: Graceful degradation if images or prices fail
-- 🔍 **Smart Filtering**: AI filters out non-energy content automatically
-- 💰 **Rate Limiting**: Prevents Yahoo Finance API overuse
-
-### **Professional Output Example**
-```
-🎯 MARKETMAN - HIGH ALERT
-
-📈 Bullish Signal (8/10)
-
-📰 SITUATION:
-Solar Industry Sees Record Q3 Growth as Federal Tax Credits Extended
-
-💡 STRATEGIC ANALYSIS:
-The extension of federal tax credits and falling panel costs are driving significant growth in solar installations, indicating strong future demand.
-
-📊 LIVE MARKET DATA:
-• XLE: $88.98 (+1.02%) 📈
-• ICLN: $12.63 (-0.55%) 📉
-• TAN: $32.05 (-1.35%) 📉
-
-🧠 COACH'S PERSPECTIVE:
-Stay focused on the long-term growth trajectory of the solar sector, leveraging policy support and technological advancements.
-
-🎯 STRATEGIC GUIDANCE:
-Consider increasing exposure to solar and clean energy ETFs like TAN and ICLN as they are poised to benefit from favorable policy conditions.
-
-🎯 FOCUS ETFs: TAN, ICLN, QCLN, PBW
-```
-
-## 🛠️ Quick Setup
-
-### 1. Install Dependencies
+### 1. Installation
 ```bash
-chmod +x setup.sh
-./setup.sh
+git clone <repository>
+cd marketMan
+pip install -r requirements.txt
+chmod +x marketman marketman-alerts
 ```
 
-### 2. Configure Environment
-Copy `.env.example` to `.env` and add your credentials:
-```env
+### 2. Configuration
+```bash
+cp .env.example .env
+# Edit .env with your API keys
+```
+
+### 3. Setup Notion Database
+```bash
+python notion_setup_enhanced.py
+```
+
+### 4. Test System
+```bash
+./marketman test --all
+python news_gpt_analyzer.py test
+```
+
+### 5. Run Analysis
+```bash
+# Single run
+python news_gpt_analyzer.py
+
+# Continuous monitoring  
+./marketman monitor --loop 30
+
+# Check alert queue
+./marketman-alerts stats
+```
+
+## 🔧 Configuration
+
+### Environment Variables (`.env`)
+```bash
 # Required
 GMAIL_USER=your-email@gmail.com
-GMAIL_APP_PASSWORD=your-gmail-app-password
+GMAIL_APP_PASSWORD=your-app-password
 OPENAI_API_KEY=sk-your-openai-key
 
-# Optional (for mobile alerts)
-PUSHOVER_TOKEN=your-pushover-app-token
-PUSHOVER_USER=your-pushover-user-key
-
-# Optional (for data logging)
-NOTION_TOKEN=secret_your-notion-integration-token
+# Optional  
+PUSHOVER_TOKEN=your-pushover-token
+PUSHOVER_USER=your-pushover-user
+NOTION_TOKEN=your-notion-token
 NOTION_DATABASE_ID=your-database-id
+
+# Alert Strategy (smart_batch recommended)
+ALERT_STRATEGY=smart_batch
 ```
 
-### 3. Test Your Setup
+### Google Alerts Setup
+1. Create Google Alerts for your target keywords
+2. Set delivery to your Gmail account
+3. MarketMan automatically processes new alerts
+
+## 🧠 Alert Batching Strategies
+
+| Strategy | Description | Best For |
+|----------|-------------|-----------|
+| `smart_batch` | High confidence immediate, others batched | **Recommended default** |
+| `immediate` | Send every alert right away | Low-volume setups |
+| `time_window` | Batch alerts every 30 minutes | High-volume monitoring |
+| `daily_digest` | One summary per day | Long-term investors |
+
 ```bash
-# Test everything
+# Change strategy
+echo "ALERT_STRATEGY=daily_digest" >> .env
+
+# Check configuration
+./marketman-alerts config
+```
+
+## 📊 Core Components
+
+### 🤖 AI Analysis Engine (`news_gpt_analyzer.py`)
+- **GPT-4 powered** thematic ETF analysis
+- **Sector categorization** (AI, Defense, Clean Energy, etc.)
+- **Confidence scoring** (1-10 scale)
+- **Real-time ETF pricing** via yfinance
+- **Memory integration** for contextual insights
+
+### 🧠 Contextual Memory (`market_memory.py`)
+- **SQLite-backed** signal storage
+- **Pattern detection** (streaks, reversals, volatility)
+- **Contextual insights** based on historical signals
+- **CLI management** via `marketman` command
+
+### 📱 Smart Notifications (`alert_batcher.py`)
+- **Intelligent batching** prevents alert fatigue
+- **Sector-focused** ETF grouping
+- **Rate limit protection** (Pushover: 7,500/month)
+- **Queue management** with retry logic
+
+### � Notion Integration (`notion_setup_enhanced.py`)
+- **Comprehensive logging** with analysis details
+- **Memory insights** as toggle blocks
+- **Action recommendations** (BUY/SELL/HOLD)
+- **Cover images** from article previews
+
+## �️ Command Line Tools
+
+### Main CLI (`./marketman`)
+```bash
+# Test components
+./marketman test --pushover
 ./marketman test --all
 
-# Test specific components
-./marketman test --pushover
-./marketman test --notion
-./marketman test --gmail
+# System monitoring
+./marketman monitor --system --loop 60
+./marketman monitor --news --loop 30
+
+# Memory management  
+./marketman memory --stats
+./marketman memory --cleanup --days 30
+./marketman memory --patterns ITA
+
+# Manual notifications
+./marketman send "Market update" --priority 1
 ```
 
-### 4. Set Up Google Alerts
-Create alerts for energy keywords:
-- "energy stocks", "solar energy", "renewable energy"
-- "oil prices", "clean energy", "XLE ETF", "ICLN ETF"
-
-## 📱 Pushover Integration (Production-Ready)
-
-The unified `pushover_utils.py` follows proven server monitor patterns:
-
-```python
-from pushover_utils import send_energy_alert, send_system_alert
-
-# Energy alerts (auto-formatted with emojis and priorities)
-send_energy_alert(
-    signal="Bearish", confidence=8,
-    title="Solar Stocks Plummet",
-    reasoning="Budget cuts affect sector",
-    etfs=["TAN", "ICLN"],
-    article_url="https://notion.so/page-url"  # Links to Notion analysis
-)
-
-# System alerts (matches your existing yang.prox style)
-send_system_alert("yang.prox", "DOWN", "Host unreachable")
-```
-
-## 🏃‍♂️ Usage
-
-### CLI Commands (Recommended)
+### Alert Management (`./marketman-alerts`)
 ```bash
-# Quick testing
-./marketman test --pushover            # Test notifications
-./marketman test --all                 # Test everything
+# Queue status
+./marketman-alerts stats
+./marketman-alerts pending
 
-# Monitoring runs
-./marketman monitor                    # Combined news + system monitoring
-./marketman monitor --news             # News analysis only
-./marketman monitor --system           # System monitoring only
-./marketman monitor --loop 15          # Continuous every 15 minutes
+# Process batches
+./marketman-alerts process
 
-# Manual actions
-./marketman send "Custom alert" --priority 1  # Send manual alert
-./marketman service install            # Install systemd service
-./marketman service start              # Start background service
+# Test batching
+./marketman-alerts test
 
-# Memory operations
-./marketman memory                     # Show recent signals
-./marketman memory --stats             # Memory statistics
-./marketman memory --patterns          # Show detected patterns
-./marketman memory --etf ICLN          # Patterns for specific ETF
-./marketman memory --cleanup 30        # Clean up data older than 30 days
+# Configuration
+./marketman-alerts config
 ```
 
-### Direct Python (Alternative)
+### System Monitor (`marketman_monitor.py`)
 ```bash
-python news_gpt_analyzer.py           # News analysis only
-python marketman_monitor.py --loop 15 # Combined monitoring
+# Combined system + market monitoring
+python marketman_monitor.py --loop 30
+
+# Individual components
+python marketman_monitor.py --system-only
+python marketman_monitor.py --news-only
 ```
 
-### Production Deployment
+## 📈 Typical Workflows
+
+### Day Trader Setup
 ```bash
-# Install as systemd service
-./marketman service install
-./marketman service start
-./marketman service status
-
-# Monitor logs
-journalctl -f -u marketman
+# Smart batching with 15-minute processing
+ALERT_STRATEGY=smart_batch
+echo "*/15 * * * * cd /root/marketMan && ./marketman-alerts process" | crontab -
 ```
 
-## ⚙️ Detailed Setup Guide
-
-### Gmail Configuration
-1. **Enable 2FA** on your Gmail account
-2. **Generate App Password**:
-   - Google Account settings → Security → 2-Step Verification → App passwords
-   - Generate password for "Mail"
-3. **Add to .env**: `GMAIL_APP_PASSWORD=your-16-char-password`
-
-### Pushover Setup (Optional)
-1. Create account at [pushover.net](https://pushover.net)
-2. Create new application, get API token
-3. Add to .env: `PUSHOVER_TOKEN` and `PUSHOVER_USER`
-
-### Notion Setup (Optional)
+### Multiple Keywords Monitoring
 ```bash
-# Automated setup with image support
-python notion_setup.py --test              # Test existing
-python notion_setup.py --create            # Create new database with Image property
-python notion_setup.py --create --page-id "your-page-id" --auto  # Automated
+# Time-based batching for high volume
+ALERT_STRATEGY=time_window  
+echo "*/15 * * * * cd /root/marketMan && ./marketman-alerts process" | crontab -
 ```
 
-**Database includes:**
-- Title, Signal, Confidence, ETFs, Reasoning, Timestamp, Link
-- **NEW**: Cover images and Image URL property for visual previews
-- **NEW**: Enhanced database structure for better organization
-
-## 📊 How It Works
-
-### News Analysis Flow
-1. **Fetch**: Polls Gmail for Google Alert emails
-2. **Extract**: Parses article titles, summaries, and links
-3. **🖼️ Image Fetch**: Uses Microlink API to get article preview images
-4. **Analyze**: GPT-4 evaluates energy sector relevance and signals
-5. **Filter**: Only processes confidence ≥7 signals
-6. **📱 Rich Alert**: Sends Pushover notification with image and Notion link
-7. **📊 Visual Log**: Stores analysis in Notion with cover image and structured data
-
-### Output Format
-```json
-{
-  "relevance": "financial",
-  "sector": "Energy", 
-  "signal": "Bearish",
-  "confidence": 8,
-  "affected_etfs": ["XLE", "TAN"],
-  "reasoning": "Solar subsidies cut, affecting TAN ETF outlook",
-  "market_impact": "Short-term bearish pressure on solar stocks",
-  "image_url": "https://iad.microlink.io/article-preview.png"
-}
-```
-
-### Alert Thresholds
-- **Confidence ≥7**: Pushover alert + Notion logging
-- **Confidence ≥8**: High-priority alert
-- **All relevant**: Console logging
-
-## 🐛 Common Issues & Solutions
-
-### Gmail Connection Problems
-- **App Password**: Use Gmail App Password, not account password
-- **2FA Required**: Enable 2-Step Verification first
-- **IMAP Access**: Ensure IMAP is enabled in Gmail settings
-
-### No Alerts Found
-- **Google Alerts**: Verify alerts are set up and arriving
-- **Email Filters**: Check spam folder and Gmail filters
-- **Keywords**: Use energy-specific terms for better results
-
-### API Errors
-- **OpenAI Credits**: Check API key has sufficient balance
-- **Rate Limits**: Built-in retry logic handles temporary failures
-- **Network**: Verify internet connectivity
-
-### Notion Issues
+### Long-term Investor
 ```bash
-# Test Notion setup
-python notion_setup.py --test
-
-# Common fixes
-# 1. Share database with your integration
-# 2. Check integration permissions
-# 3. Verify database ID is correct
+# Daily market digest
+ALERT_STRATEGY=daily_digest
+echo "0 8 * * * cd /root/marketMan && ./marketman-alerts process" | crontab -
 ```
 
-### Pushover Not Working
-```bash
-# Test Pushover
-./marketman test --pushover
+## 🎯 Alert Examples
 
-# Verify credentials in .env file
-# Check Pushover app is active
+### Single Alert (High Confidence)
+```
+↗ BULLISH Signal (9/10)
+
+Clean Energy Bill Passes Senate Committee...
+
+Reason: Bipartisan legislation unlocks $50B investment
+ETFs: ICLN, TAN, QCLN
 ```
 
-## 🔧 Advanced Configuration
+### Batched Alerts
+```
+🎯 Market Batch Update (4 signals)
 
-### Alternative AI Providers
-```python
-# Switch to DeepSeek (modify analyze_energy_news function)
-response = requests.post(
-    "https://api.deepseek.com/v1/chat/completions",
-    headers={"Authorization": f"Bearer {os.getenv('DEEPSEEK_API_KEY')}"},
-    json={
-        "model": "deepseek-chat",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.1
-    }
-)
+Signals: ↗ 3 Bullish | ↘ 1 Bearish
+
+🔥 High Confidence Alerts:
+• Bullish Clean Energy: Infrastructure spending approved...
+• Bullish Electric Vehicles: Tesla earnings beat...
+
+📈 Sectors Active:
+• Clean Energy: ICLN, TAN, QCLN
+• Electric Vehicles: LIT, DRIV, ARKQ
 ```
 
-### Custom Monitoring Targets
-Edit `marketman_monitor.py` to add your servers:
-```python
-SERVERS = [
-    "yang.prox",
-    "your-server.com",
-    "192.168.1.100"
-]
+## 🗂️ Project Structure
+
 ```
-
-### Automated Deployment
-```bash
-# Install as systemd service
-sudo ./marketman service install
-
-# Alternative: cron job
-echo "*/15 * * * * cd /root/marketMan && ./marketman monitor" | crontab -
+marketMan/
+├── 🤖 Core Analysis
+│   ├── news_gpt_analyzer.py    # Main AI analysis engine
+│   ├── market_memory.py        # Contextual memory system
+│   └── pushover_utils.py       # Notification utilities
+│
+├── 📊 Alert Management  
+│   ├── alert_batcher.py        # Smart batching system
+│   └── marketman-alerts        # Queue management CLI
+│
+├── 🔧 Setup & Integration
+│   ├── notion_setup_enhanced.py # Notion database setup
+│   ├── marketman_monitor.py     # System monitoring
+│   └── marketman               # Main CLI tool
+│
+├── 📋 Configuration
+│   ├── .env                    # Environment variables
+│   ├── requirements.txt        # Python dependencies
+│   └── marketman.service       # Systemd service
+│
+└── 💾 Data Storage
+    ├── marketman_memory.db     # Memory patterns (SQLite)
+    └── alert_batch.db          # Alert queue (SQLite)
 ```
-
-## � What's New in v2.0
-
-### ✅ **Unified Pushover System**
-- Reusable `pushover_utils.py` matching your proven server monitor pattern
-- Smart energy alerts with auto-formatting and priorities
-- System alerts compatible with existing yang.prox workflow
-- Clean notification links to Notion analysis pages (no more messy Google redirects)
-
-### ✅ **Enhanced Architecture** 
-- Modular design with clear separation of concerns
-- Production-ready error handling and recovery
-- CLI interface for easy management and testing
-- Systemd service support for automated deployment
-
-### ✅ **Bug Fixes Applied**
-- **Non-Energy Filtering**: AI now skips irrelevant content (Mode Mobile, etc.)
-- **JSON Parsing**: Improved consistency with better prompts and error handling
-- **UI Element Noise**: Filters out "Flag as irrelevant" and other Google Alert UI
-- **Notion Integration**: Graceful degradation when database isn't configured
-- **Article Extraction**: Better regex patterns for current Google Alert HTML
-- **🔗 Google URL Cleaning**: Automatically extracts real URLs from Google redirects
-- **🖼️ Image Integration**: Cover images work without requiring new database properties
-- **📱 Rich Notifications**: Pushover gets clean URLs and working image attachments
-
-### ✅ **Key Improvements**
-- Early .env validation with helpful error messages
-- Duplicate database prevention in Notion setup
-- Auto-updating .env files with new database IDs
-- Comprehensive testing suite with `--test` commands
-- Better logging with debug information for troubleshooting
-
-## 📚 Dependencies
-
-Core requirements automatically installed by `setup.sh`:
-- `openai` - GPT-4 API integration
-- `python-dotenv` - Environment management  
-- `requests` - HTTP requests
-- `imaplib`, `email` - Gmail integration (built-in)
-
-## 🔄 Future Enhancements
-
-- **Multiple AI Providers**: Claude, DeepSeek, local LLMs
-- **Portfolio Integration**: Brokerage API connections
-- **Advanced Analytics**: Backtesting and accuracy metrics
-- **Team Notifications**: Slack/Discord integration
-- **Risk Management**: Position sizing recommendations
-- **Extended Asset Coverage**: Commodities, crypto, bonds analysis
-
----
-
-## 📖 Quick Reference
-
-```bash
-# Setup
-./setup.sh && cp .env.example .env
-# Edit .env with your credentials
-
-# Test system
-./marketman test --all
-
-# Run with rich media
-./marketman monitor --loop 15
-
-# Deploy
-./marketman service install && ./marketman service start
-```
-
-**🎯 You now have a production-ready system with rich visual notifications and professional coaching insights - like having your own hedge fund analysis team!**
