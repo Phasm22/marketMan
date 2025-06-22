@@ -12,6 +12,12 @@ config/secrets.json
 secrets/
 credentials/
 
+# Gmail OAuth Credentials (NEVER COMMIT THESE!)
+config/gmail_credentials.json
+config/gmail_token.pickle
+*_credentials.json
+*_token.pickle
+
 # Python
 __pycache__/
 *.py[cod]
