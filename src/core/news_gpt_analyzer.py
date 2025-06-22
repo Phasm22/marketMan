@@ -593,13 +593,16 @@ class GmailPoller:
         for i, (link, title_html) in enumerate(title_links):
             # Clean up the title (remove HTML tags and decode)
             title = re.sub(r'<[^>]+>', '', title_html).strip()
-            title = title.replace('&nbsp;', ' ').replace('&amp;', '&')
+            
+            # Decode HTML entities properly
+            import html
+            title = html.unescape(title)
             
             # Get corresponding description
             description = ""
             if i < len(descriptions):
                 description = re.sub(r'<[^>]+>', '', descriptions[i]).strip()
-                description = description.replace('&nbsp;', ' ').replace('&amp;', '&')
+                description = html.unescape(description)
             
             logger.info(f"📧 Extracted article: '{title}' -> {description[:100]}...")
             

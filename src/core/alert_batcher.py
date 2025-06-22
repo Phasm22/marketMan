@@ -238,7 +238,13 @@ ETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
         signal_parts = []
         for signal, count in total_signals.items():
             if count > 0:
-                emoji = {"Bullish": "↗", "Bearish": "↘", "Neutral": "→"}[signal]
+                # Handle mixed signals
+                if '|' in signal:
+                    primary_signal = signal.split('|')[0]  # Take first signal
+                else:
+                    primary_signal = signal
+                    
+                emoji = {"Bullish": "↗", "Bearish": "↘", "Neutral": "→"}.get(primary_signal, "?")
                 signal_parts.append(f"{emoji} {count} {signal}")
         summary += f"Signals: {' | '.join(signal_parts)}\n\n"
         
@@ -264,6 +270,14 @@ ETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
 
     def send_batch(self, strategy: BatchStrategy) -> bool:
         """Send a batch of alerts using the specified strategy"""
+        import sys
+        import os
+        
+        # Add project root to path for imports
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+        
         from src.integrations.pushover_utils import send_pushover_notification
         
         alerts = self.get_pending_alerts(strategy)
