@@ -1,0 +1,1 @@
+# MarketMan Core Package

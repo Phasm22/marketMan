@@ -94,6 +94,16 @@ def create_enhanced_notion_database():
                 ]
             }
         },
+        "Status": {
+            "select": {
+                "options": [
+                    {"name": "New", "color": "blue"},
+                    {"name": "Reviewed", "color": "green"},
+                    {"name": "Acted On", "color": "purple"},
+                    {"name": "Archived", "color": "gray"}
+                ]
+            }
+        },
         "Sector": {
             "select": {
                 "options": [

@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""
+MarketMan Gmail Organizer CLI
+Convenient way to organize MarketMan emails
+"""
+
+import sys
+import os
+
+# Add project root to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.integrations.gmail_organizer import GmailOrganizer
+import logging
+
+def main():
+    """Main CLI function"""
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+    
+    if len(sys.argv) < 2:
+        print("MarketMan Gmail Organizer")
+        print("=" * 30)
+        print("Commands:")
+        print("  setup    - Set up Gmail integration")
+        print("  organize - Move read Google Alerts to MarketMan folder")
+        print("  dry-run  - Show what emails would be moved")
+        print("  auto     - Run organize if >5 emails found")
+        print("  undo     - Move emails back from MarketMan folder to inbox")
+        print("  test     - Test if Google Alerts are reachable")
+        print("")
+        print("Examples:")
+        print("  ./bin/gmail-organizer setup")
+        print("  ./bin/gmail-organizer organize")
+        print("  ./bin/gmail-organizer dry-run --days 14")
+        print("  ./bin/gmail-organizer undo  # Fix incorrectly moved emails")
+        return
+    
+    command = sys.argv[1]
+    organizer = GmailOrganizer()
+    
+    if command == "setup":
+        print("🚀 Gmail Integration Setup")
+        print("=" * 30)
+        print("📋 Steps to enable Gmail integration:")
+        print("1. Go to https://console.cloud.google.com/")
+        print("2. Create a new project or select existing")
+        print("3. Enable Gmail API")
+        print("4. Go to 'Credentials' → 'Create Credentials' → 'OAuth client ID'")
+        print("5. Choose 'Desktop application'")
+        print("6. Download the JSON file")
+        print(f"7. Save it as: {organizer.credentials_file}")
+        print("")
+        print("🔧 After saving credentials file, run:")
+        print("  ./bin/gmail-organizer organize")
+        print("")
+        print("This will open a browser to authorize the app.")
+        
+    elif command == "organize":
+        days = 7
+        if "--days" in sys.argv:
+            try:
+                days_idx = sys.argv.index("--days") + 1
+                days = int(sys.argv[days_idx])
+            except (ValueError, IndexError):
+                print("❌ Invalid --days value")
+                return
+        
+        result = organizer.organize_marketman_emails(days_back=days, dry_run=False)
+        
+        if 'error' in result:
+            print(f"❌ Error: {result['error']}")
+            if 'credentials' in result['error'].lower():
+                print("💡 Run './bin/gmail-organizer setup' first")
+            sys.exit(1)
+        
+        print(f"✅ {result['message']}")
+        if result.get('moved', 0) > 0:
+            print(f"🎉 Your inbox is now {result['moved']} Google Alerts cleaner!")
+    
+    elif command == "dry-run":
+        days = 7
+        if "--days" in sys.argv:
+            try:
+                days_idx = sys.argv.index("--days") + 1
+                days = int(sys.argv[days_idx])
+            except (ValueError, IndexError):
+                print("❌ Invalid --days value")
+                return
+        
+        result = organizer.organize_marketman_emails(days_back=days, dry_run=True)
+        
+        if 'error' in result:
+            print(f"❌ Error: {result['error']}")
+            sys.exit(1)
+        
+        print(f"🧪 DRY RUN RESULTS:")
+        print(f"📊 Found {result['total_found']} Google Alerts")
+        print(f"📥 {result['inbox_messages']} are in your inbox")
+        if result['inbox_messages'] > 0:
+            print(f"🗂️  Would move {result['inbox_messages']} to MarketMan folder")
+        else:
+            print("✨ Your inbox is already organized!")
+    
+    elif command == "auto":
+        # Auto-organize if more than 5 emails
+        result = organizer.organize_marketman_emails(days_back=7, dry_run=True)
+        
+        if 'error' in result:
+            print(f"❌ Error: {result['error']}")
+            sys.exit(1)
+        
+        if result['inbox_messages'] >= 5:
+            print(f"📥 Found {result['inbox_messages']} Google Alerts in inbox - organizing...")
+            organize_result = organizer.organize_marketman_emails(days_back=7, dry_run=False)
+            print(f"✅ {organize_result['message']}")
+        else:
+            print(f"📥 Only {result['inbox_messages']} Google Alerts in inbox - no action needed")
+    
+    elif command == "undo":
+        print("🔄 Moving emails back from MarketMan folder to inbox...")
+        result = organizer.undo_marketman_organization()
+        
+        if 'error' in result:
+            print(f"❌ Error: {result['error']}")
+            sys.exit(1)
+        
+        if result.get('moved', 0) > 0:
+            print(f"✅ Moved {result['moved']} emails back to inbox")
+        else:
+            print("📭 No emails found in MarketMan folder to move back")
+    
+    elif command == "test":
+        print("🧪 Testing Google Alerts connectivity...")
+        result = organizer.test_google_alerts_search()
+        
+        if 'error' in result:
+            print(f"❌ Error: {result['error']}")
+            sys.exit(1)
+        
+        print(f"✅ Found {result['total_alerts']} Google Alerts in last 30 days")
+        print("🎯 Will organize ALL Google Alerts (not filtered by subject)")
+    
+    else:
+        print(f"❌ Unknown command: {command}")
+        print("Run without arguments to see available commands")
+
+
+if __name__ == "__main__":
+    main()

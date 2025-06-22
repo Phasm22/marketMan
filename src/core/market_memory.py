@@ -14,7 +14,7 @@ class MarketMemory:
 
     def __init__(
         self,
-        db_path: str = "marketman_memory.db",
+        db_path: str = None,
         max_days_apart: int = 3,
         confidence_threshold: int = 6,
         volatility_window: int = 7,
@@ -23,6 +23,10 @@ class MarketMemory:
         """
         Contextual memory system for MarketMan to track signal patterns and provide continuity.
         """
+        if db_path is None:
+            # Default to data directory relative to project root
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            db_path = os.path.join(project_root, "data", "marketman_memory.db")
         self.db_path = db_path
         # Configurable pattern detection thresholds
         self.max_days_apart = max_days_apart

@@ -5,8 +5,13 @@ Matches your server monitoring workflow with simple commands
 """
 
 import sys
+import os
 import argparse
-from pushover_utils import send_pushover_notification, send_energy_alert, test_pushover
+
+# Add project root to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.integrations.pushover_utils import send_pushover_notification, send_energy_alert, test_pushover
 
 def main():
     parser = argparse.ArgumentParser(description="MarketMan CLI Tools")
@@ -62,7 +67,7 @@ def main():
             test_setup.main()
     
     elif args.command == 'monitor':
-        from marketman_monitor import MarketManMonitor
+        from src.monitoring.marketman_monitor import MarketManMonitor
         monitor = MarketManMonitor()
         
         if args.loop:
@@ -113,7 +118,7 @@ def main():
             sys.exit(1)
     
     elif args.command == 'memory':
-        from market_memory import MarketMemory
+        from src.core.market_memory import MarketMemory
         memory = MarketMemory()
         
         if args.cleanup is not None:

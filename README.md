@@ -35,24 +35,25 @@ cp .env.example .env
 
 ### 3. Setup Notion Database
 ```bash
-python notion_setup_enhanced.py
+python setup/notion_setup_enhanced.py
 ```
 
 ### 4. Test System
 ```bash
-./marketman test --all
-python news_gpt_analyzer.py test
+./bin/marketman test --all
+python src/core/news_gpt_analyzer.py test
 ```
 
 ### 5. Run Analysis
 ```bash
 # Single run
-python news_gpt_analyzer.py
+python src/core/news_gpt_analyzer.py
 
 # Continuous monitoring  
-./marketman monitor --loop 30
+./bin/marketman monitor --loop 30
 
 # Check alert queue
+./bin/marketman-alerts stats
 ./marketman-alerts stats
 ```
 
@@ -97,6 +98,35 @@ echo "ALERT_STRATEGY=daily_digest" >> .env
 ./marketman-alerts config
 ```
 
+## 📧 Gmail Management
+
+MarketMan can automatically organize your MarketMan alerts in Gmail:
+
+```bash
+# Set up Gmail integration (one-time)
+./bin/gmail-organizer setup
+
+# Move read MarketMan alerts to folder
+./bin/gmail-organizer organize
+
+# See what would be moved (dry run)
+./bin/gmail-organizer dry-run
+
+# Auto-organize if 5+ emails found
+./bin/gmail-organizer auto
+```
+
+## 📝 Notion Status Tracking
+
+New Notion cards include a **Status** field to track your review progress:
+
+- **New** - Freshly analyzed signals (default)
+- **Reviewed** - You've read and considered the signal
+- **Acted On** - You've taken action based on the signal
+- **Archived** - Historical reference
+
+Simply update the Status dropdown in Notion to keep track of what you've reviewed!
+
 ## 📊 Core Components
 
 ### 🤖 AI Analysis Engine (`news_gpt_analyzer.py`)
@@ -126,49 +156,49 @@ echo "ALERT_STRATEGY=daily_digest" >> .env
 
 ## �️ Command Line Tools
 
-### Main CLI (`./marketman`)
+### Main CLI (`./bin/marketman`)
 ```bash
 # Test components
-./marketman test --pushover
-./marketman test --all
+./bin/marketman test --pushover
+./bin/marketman test --all
 
 # System monitoring
-./marketman monitor --system --loop 60
-./marketman monitor --news --loop 30
+./bin/marketman monitor --system --loop 60
+./bin/marketman monitor --news --loop 30
 
 # Memory management  
-./marketman memory --stats
-./marketman memory --cleanup --days 30
-./marketman memory --patterns ITA
+./bin/marketman memory --stats
+./bin/marketman memory --cleanup --days 30
+./bin/marketman memory --patterns ITA
 
 # Manual notifications
-./marketman send "Market update" --priority 1
+./bin/marketman send "Market update" --priority 1
 ```
 
-### Alert Management (`./marketman-alerts`)
+### Alert Management (`./bin/marketman-alerts`)
 ```bash
 # Queue status
-./marketman-alerts stats
-./marketman-alerts pending
+./bin/marketman-alerts stats
+./bin/marketman-alerts pending
 
 # Process batches
-./marketman-alerts process
+./bin/marketman-alerts process
 
 # Test batching
-./marketman-alerts test
+./bin/marketman-alerts test
 
 # Configuration
-./marketman-alerts config
+./bin/marketman-alerts config
 ```
 
-### System Monitor (`marketman_monitor.py`)
+### System Monitor (`src/monitoring/marketman_monitor.py`)
 ```bash
 # Combined system + market monitoring
-python marketman_monitor.py --loop 30
+python src/monitoring/marketman_monitor.py --loop 30
 
 # Individual components
-python marketman_monitor.py --system-only
-python marketman_monitor.py --news-only
+python src/monitoring/marketman_monitor.py --system-only
+python src/monitoring/marketman_monitor.py --news-only
 ```
 
 ## 📈 Typical Workflows
@@ -177,21 +207,21 @@ python marketman_monitor.py --news-only
 ```bash
 # Smart batching with 15-minute processing
 ALERT_STRATEGY=smart_batch
-echo "*/15 * * * * cd /root/marketMan && ./marketman-alerts process" | crontab -
+echo "*/15 * * * * cd /root/marketMan && ./bin/marketman-alerts process" | crontab -
 ```
 
 ### Multiple Keywords Monitoring
 ```bash
 # Time-based batching for high volume
 ALERT_STRATEGY=time_window  
-echo "*/15 * * * * cd /root/marketMan && ./marketman-alerts process" | crontab -
+echo "*/15 * * * * cd /root/marketMan && ./bin/marketman-alerts process" | crontab -
 ```
 
 ### Long-term Investor
 ```bash
 # Daily market digest
 ALERT_STRATEGY=daily_digest
-echo "0 8 * * * cd /root/marketMan && ./marketman-alerts process" | crontab -
+echo "0 8 * * * cd /root/marketMan && ./bin/marketman-alerts process" | crontab -
 ```
 
 ## 🎯 Alert Examples
@@ -225,26 +255,54 @@ Signals: ↗ 3 Bullish | ↘ 1 Bearish
 
 ```
 marketMan/
-├── 🤖 Core Analysis
+├── 🤖 Core Analysis (src/core/)
 │   ├── news_gpt_analyzer.py    # Main AI analysis engine
 │   ├── market_memory.py        # Contextual memory system
-│   └── pushover_utils.py       # Notification utilities
+│   └── alert_batcher.py        # Smart batching system
 │
-├── 📊 Alert Management  
-│   ├── alert_batcher.py        # Smart batching system
-│   └── marketman-alerts        # Queue management CLI
-│
-├── 🔧 Setup & Integration
+├── 🔗 Integrations (src/integrations/)
+│   ├── pushover_utils.py       # Notification utilities
 │   ├── notion_setup_enhanced.py # Notion database setup
-│   ├── marketman_monitor.py     # System monitoring
-│   └── marketman               # Main CLI tool
+│   └── deepseek_integration.py # AI model integration
 │
-├── 📋 Configuration
-│   ├── .env                    # Environment variables
-│   ├── requirements.txt        # Python dependencies
-│   └── marketman.service       # Systemd service
+├── 📊 Monitoring (src/monitoring/)
+│   └── marketman_monitor.py    # Combined system monitoring
 │
-└── 💾 Data Storage
-    ├── marketman_memory.db     # Memory patterns (SQLite)
-    └── alert_batch.db          # Alert queue (SQLite)
+├── 🛠️ Command Line Tools (bin/)
+│   ├── marketman               # Main CLI tool
+│   ├── marketman-alerts        # Queue management CLI
+│   └── run_analyzer.sh         # Analysis runner script
+│
+├── ⚙️ Setup & Configuration (setup/)
+│   ├── notion_setup.py         # Basic Notion setup
+│   ├── setup.sh               # System setup script
+│   └── requirements.txt        # Python dependencies
+│
+├── 🧪 Tests (tests/)
+│   ├── test_contextual.py      # Memory system tests
+│   ├── test_fixes.py          # Bug fix tests
+│   ├── test_real_context.py   # Integration tests
+│   └── test_setup.py          # Setup validation tests
+│
+├── 📚 Documentation (docs/)
+│   ├── ALERT_BATCHING_GUIDE.md
+│   ├── BATCHING_IMPLEMENTATION_SUMMARY.md
+│   └── CONTEXTUAL_MEMORY_COMPLETE.md
+│
+├── 💾 Data Storage (data/)
+│   ├── marketman_memory.db     # Memory patterns (SQLite)
+│   ├── alert_batch.db          # Alert queue (SQLite)
+│   └── debug_email.html        # Debug files
+│
+├── 📋 Examples (examples/)
+│   ├── create_digest_dashboard.py
+│   └── create_digest_dashboard_simple.py
+│
+├── 🔧 Configuration (config/)
+│   ├── .env.example           # Environment template
+│   └── marketman.service      # Systemd service
+│
+├── .env                       # Environment variables
+├── requirements.txt           # Python dependencies
+└── README.md                 # This file
 ```

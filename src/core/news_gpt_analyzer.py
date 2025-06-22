@@ -9,9 +9,14 @@ from datetime import datetime
 from email.header import decode_header
 from dotenv import load_dotenv
 import logging
-from pushover_utils import send_energy_alert, send_system_alert
-from market_memory import MarketMemory
-from alert_batcher import queue_alert, process_alert_queue, BatchStrategy
+import sys
+
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+from src.integrations.pushover_utils import send_energy_alert, send_system_alert
+from src.core.market_memory import MarketMemory
+from src.core.alert_batcher import queue_alert, process_alert_queue, BatchStrategy
 
 # Set up logging with debug control
 DEBUG_MODE = os.getenv("DEBUG", "false").lower() == "true"
@@ -671,6 +676,9 @@ class GmailPoller:
                     },
                     "Action": {
                         "select": {"name": action_recommendation}
+                    },
+                    "Status": {
+                        "select": {"name": "New"}
                     },
                     "Timestamp": {
                         "date": {"start": analysis_data.get("timestamp", datetime.now().isoformat())}
