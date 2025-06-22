@@ -208,6 +208,38 @@ class MarketMemory:
             persist_conn = sqlite3.connect(self.db_path)
             persist_cursor = persist_conn.cursor()
             for pat in patterns:
+                # Map pattern fields to database columns with proper defaults
+                pattern_type = pat.get('type', 'unknown')
+                etf_symbol = pat.get('etf', 'unknown')
+                start_date = pat.get('start_date') or pat.get('date', datetime.now().date().isoformat())
+                end_date = pat.get('end_date') or pat.get('date', datetime.now().date().isoformat())
+                
+                # Calculate consecutive_days properly based on pattern type
+                if pat.get('type') == 'consecutive':
+                    consecutive_days = pat.get('streak', 1)
+                elif pat.get('type') == 'volatility':
+                    consecutive_days = pat.get('period_days', 1)
+                else:  # reversal or other
+                    consecutive_days = 1
+                
+                # Get signal type
+                if pat.get('type') == 'consecutive':
+                    signal_type = pat.get('signal', 'Unknown')
+                elif pat.get('type') == 'reversal':
+                    signal_type = f"{pat.get('from_signal', 'Unknown')} → {pat.get('to_signal', 'Unknown')}"
+                else:  # volatility
+                    signal_type = f"{pat.get('signal_changes', 0)} changes"
+                
+                # Get average confidence
+                if pat.get('type') == 'consecutive':
+                    avg_confidence = pat.get('avg_confidence', 0.0)
+                elif pat.get('type') == 'reversal':
+                    avg_confidence = (pat.get('from_confidence', 0) + pat.get('to_confidence', 0)) / 2
+                else:  # volatility
+                    avg_confidence = 5.0  # Default for volatility patterns
+                
+                description = pat.get('description', 'Pattern detected')
+                
                 persist_cursor.execute(
                     '''
                     INSERT INTO patterns (
@@ -216,14 +248,14 @@ class MarketMemory:
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''',
                     (
-                        pat.get('type'),
-                        pat.get('etf'),
-                        pat.get('start_date') or pat.get('date'),
-                        pat.get('end_date') or pat.get('date'),
-                        pat.get('streak') or pat.get('signal_changes'),
-                        pat.get('signal') or pat.get('signal_changes'),
-                        pat.get('avg_confidence') or pat.get('from_confidence', 0),
-                        pat.get('description'),
+                        pattern_type,
+                        etf_symbol,
+                        start_date,
+                        end_date,
+                        consecutive_days,
+                        signal_type,
+                        avg_confidence,
+                        description,
                         datetime.now(timezone.utc).isoformat()
                     )
                 )

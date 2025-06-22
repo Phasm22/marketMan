@@ -41,6 +41,67 @@ CURRENT_BATCH_STRATEGY = BATCH_STRATEGY_MAP.get(ALERT_STRATEGY, BatchStrategy.SM
 # Initialize MarketMemory for contextual tracking
 memory = MarketMemory()
 
+def generate_tactical_explanation(analysis_result, article_title):
+    """Generate a tactical, conversational explanation of the trading signal"""
+    try:
+        signal = analysis_result.get('signal', 'Neutral')
+        confidence = analysis_result.get('confidence', 0)
+        etfs = analysis_result.get('affected_etfs', [])
+        reasoning = analysis_result.get('reasoning', '')
+        sector = analysis_result.get('sector', 'Mixed')
+        
+        # Only generate tactical explanations for high-confidence signals
+        if confidence < 7:
+            return None
+            
+        prompt = f"""
+You are MarketMan's tactical advisor. A trading signal just fired and you need to explain it like you're briefing a sharp trader who wants the real deal - no fluff, just tactical insight.
+
+SIGNAL DATA:
+- Article: "{article_title}"
+- Signal: {signal} ({confidence}/10 confidence)
+- Sector: {sector}
+- Key ETFs: {', '.join(etfs[:5])}
+- AI Reasoning: "{reasoning}"
+
+Write a tactical explanation in this exact style:
+
+"Alright, here's the skinny:
+
+What the article's saying (and why MarketMan slapped on a "{signal.upper()}"):
+[Explain the core thesis in 2-3 sentences - why this signal fired, what the market dynamics are]
+
+So…{signal.lower()} what?
+That "{signal.upper()}" label is shorthand for "[tactical translation]"—i.e.:
+• [Specific ETF recommendations with tickers]
+• [Alternative plays or hedge strategies]
+• [Direct positioning advice]
+
+The tactical takeaway:
+• Short term → [immediate action/timing]
+• Medium term → [what to watch for/risks]
+• Tactical → [specific entry/exit strategy, alerts to set]
+
+Think of that "{signal.upper()}" as [metaphor for the signal] 🚀🛑"
+
+Keep it conversational, direct, and tactical. Use the trader's vernacular. Be specific about ETF tickers and actionable steps. Maximum 200 words.
+"""
+
+        response = openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,  # Slightly higher for more personality
+            max_tokens=400
+        )
+
+        tactical_explanation = response['choices'][0]['message']['content'].strip()
+        logger.info(f"💡 Generated tactical explanation ({len(tactical_explanation)} chars)")
+        return tactical_explanation
+        
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to generate tactical explanation: {e}")
+        return None
+
 def get_microlink_image(url):
     """Fetch article preview image using Microlink API (OG image, fallback to logo)"""
     try:
@@ -391,6 +452,12 @@ class NewsAnalyzer:
                     # Get fresh contextual insights for this specific analysis
                     contextual_insight = memory.get_contextual_insight(analysis, focused_etfs)
                     
+                    # Generate tactical explanation for high-confidence signals
+                    tactical_explanation = None
+                    if confidence >= 7:
+                        logger.info(f"📈 Generating tactical explanation for {confidence}/10 signal...")
+                        tactical_explanation = generate_tactical_explanation(analysis, article['title'])
+                    
                     logger.info(f"📊 {signal} signal ({confidence}/10) - {primary_sector or 'Mixed'} - {article['title'][:60]}...")
                     
                     if contextual_insight:
@@ -402,6 +469,8 @@ class NewsAnalyzer:
                             logger.debug(f"🖼️ Image URL: {article_image}")
                         if contextual_insight:
                             logger.debug(f"🧠 Full Context: {contextual_insight}")
+                        if tactical_explanation:
+                            logger.debug(f"📈 Tactical: {tactical_explanation[:100]}...")
 
                     # Prepare data for logging
                     analysis_data = {
@@ -415,7 +484,8 @@ class NewsAnalyzer:
                         "link": article['link'],
                         "search_term": alert['search_term'],
                         "image_url": article_image,
-                        "contextual_insight": contextual_insight
+                        "contextual_insight": contextual_insight,
+                        "tactical_explanation": tactical_explanation
                     }
                     
                     # Log to Notion and get the page URL
@@ -736,23 +806,31 @@ class GmailPoller:
                 logger.info(f"🖼️ Adding cover image to Notion page")
 
             # --- Build Notion children blocks ---
-            # 1. Reasoning summary (first 200 chars of full_reasoning)
-            reasoning_summary = full_reasoning[:200]
-            if len(full_reasoning) > 200:
-                reasoning_summary += "..."
-
             children = []
-            # Add callout summary block
-            children.append({
-                "object": "block",
-                "type": "callout",
-                "callout": {
-                    "icon": {"type": "emoji", "emoji": "📰"},
-                    "rich_text": [{"type": "text", "text": {"content": reasoning_summary}}]
-                }
-            })
-
-            # Add memory insights toggle block if available
+            
+            # Add tactical explanation for high-confidence signals
+            if confidence >= 7:
+                tactical_explanation = generate_tactical_explanation(analysis_data, analysis_data.get("title", ""))
+                if tactical_explanation:
+                    tactical_toggle = {
+                        "object": "block",
+                        "type": "toggle",
+                        "toggle": {
+                            "rich_text": [{"type": "text", "text": {"content": "🎯 Tactical Brief"}}],
+                            "children": [
+                                {
+                                    "object": "block",
+                                    "type": "paragraph",
+                                    "paragraph": {
+                                        "rich_text": [{"type": "text", "text": {"content": tactical_explanation}}]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                    children.append(tactical_toggle)
+            
+            # Add memory insights toggle block if available (skip redundant reasoning callout)
             if formatted_insights:
                 toggle_block = {
                     "object": "block",
@@ -971,3 +1049,43 @@ if __name__ == "__main__":
         analyzer.process_alerts()
         
         logger.info("✅ Marketman analysis cycle complete")
+
+def test_tactical_explanation():
+    """Test the tactical explanation generation"""
+    test_analysis = {
+        'signal': 'Bullish',
+        'confidence': 8,
+        'affected_etfs': ['QQQ', 'TQQQ', 'VTI'],
+        'reasoning': 'Strong earnings beats from tech giants driving sector momentum',
+        'sector': 'Technology'
+    }
+    
+    test_title = "Tech Giants Report Blowout Earnings, AI Revenue Surges"
+    
+    print("\n🧪 Testing tactical explanation generation...")
+    explanation = generate_tactical_explanation(test_analysis, test_title)
+    
+    if explanation:
+        print(f"✅ Generated tactical explanation ({len(explanation)} characters):")
+        print("=" * 60)
+        print(explanation)
+        print("=" * 60)
+    else:
+        print("❌ Failed to generate tactical explanation")
+    
+    return explanation is not None
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and "--test-tactical" in sys.argv:
+        success = test_tactical_explanation()
+        sys.exit(0 if success else 1)
+    # Normal operation
+    logger.info("🚀 Starting MarketMan marketMan system...")
+    
+    # Initialize the news analyzer
+    analyzer = NewsAnalyzer()
+    
+    # Process new Google Alerts
+    analyzer.process_alerts()
+    
+    logger.info("✅ Marketman analysis cycle complete")
