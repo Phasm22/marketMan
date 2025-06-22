@@ -264,7 +264,7 @@ ETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
 
     def send_batch(self, strategy: BatchStrategy) -> bool:
         """Send a batch of alerts using the specified strategy"""
-        from pushover_utils import send_pushover_notification
+        from src.integrations.pushover_utils import send_pushover_notification
         
         alerts = self.get_pending_alerts(strategy)
         if not alerts:

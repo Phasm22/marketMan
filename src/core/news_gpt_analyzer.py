@@ -49,6 +49,8 @@ def get_microlink_image(url):
             "meta": "true",
             "screenshot": "false"
         }
+        # Add delay to avoid rate limiting
+        time.sleep(1)
         response = requests.get("https://api.microlink.io", params=params, timeout=10)
         if response.status_code == 200:
             data = response.json().get("data", {})
@@ -62,6 +64,9 @@ def get_microlink_image(url):
                 logger.info("✅ Fallback to logo via Microlink")
                 return logo_url
             logger.warning("⚠️ No image or logo found in Microlink response")
+        elif response.status_code == 429:
+            logger.warning(f"⚠️ Microlink API rate limited (429) - skipping image for this article")
+            return None
         else:
             logger.warning(f"⚠️ Microlink API error: {response.status_code}")
     except Exception as e:
@@ -344,8 +349,13 @@ class NewsAnalyzer:
                     if not analysis:
                         continue
 
-                    # Fetch article image using Microlink
-                    article_image = get_microlink_image(article['link'])
+                    # Fetch article image using Microlink (with rate limiting)
+                    article_image = None
+                    try:
+                        article_image = get_microlink_image(article['link'])
+                    except Exception as e:
+                        logger.warning(f"⚠️ Skipping image fetch due to error: {e}")
+                        article_image = None
                     
                     signal = analysis.get('signal', 'Neutral')
                     confidence = analysis.get('confidence', 0)
