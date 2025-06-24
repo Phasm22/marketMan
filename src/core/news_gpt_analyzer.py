@@ -984,24 +984,31 @@ class GmailPoller:
             
             logger.info(f"📊 ETFs to add to Notion: {etf_list}")
             
-            # Build position summary text with prices for display in reasoning
-            position_summary = []
+            # Create more descriptive position recommendations (not just duplicating ETF tags)
+            position_recommendations = []
             
             if strong_buys:
-                position_summary.append(f"🟢 STRONG BUYS ({len(strong_buys)})")
+                position_recommendations.append(f"🎯 HIGH CONVICTION BUYS:")
                 for pos in strong_buys[:3]:  # Top 3
-                    position_summary.append(f"• {pos['ticker']}: ENTRY ${pos['entry_price']:.2f} | CONVICTION {pos['conviction']:.1f}/10 | VOL {pos['volume']:,}")
+                    position_recommendations.append(f"• {pos['ticker']}: Target entry ${pos['entry_price']:.2f} | Conviction {pos['conviction']:.1f}/10 | Volume {pos['volume']:,}")
+                    position_recommendations.append(f"  Strategy: 2-5% position size, stop-loss at -8%, target +15-20%")
             
             if strong_sells:
-                position_summary.append(f"🔴 STRONG SELLS ({len(strong_sells)})")
+                position_recommendations.append(f"� TACTICAL SELLS:")
                 for pos in strong_sells[:2]:  # Top 2
-                    position_summary.append(f"• {pos['ticker']}: ENTRY ${pos['entry_price']:.2f} | CONVICTION {pos['conviction']:.1f}/10 | VOL {pos['volume']:,}")
+                    position_recommendations.append(f"• {pos['ticker']}: Entry ${pos['entry_price']:.2f} | Conviction {pos['conviction']:.1f}/10")
+                    position_recommendations.append(f"  Strategy: Consider inverse exposure or defensive hedging")
             
-            if watchlist:
-                position_summary.append(f"👁️ WATCHLIST: {', '.join(watchlist[:5])}")
+            if not strong_buys and not strong_sells:
+                position_recommendations.append("📊 HOLD STRATEGY:")
+                position_recommendations.append("Market signals show promise but lack strong confirmation.")
+                position_recommendations.append("• Monitoring key ETFs for volume breakouts and trend confirmation")
+                if watchlist:
+                    position_recommendations.append(f"• Watchlist tracking: {', '.join(watchlist[:3])}")
+                position_recommendations.append("• Waiting for clearer directional signals before major allocation")
             
-            position_text = '\n'.join(position_summary)
-            logger.info(f"📋 Position summary prepared with {len(position_summary)} sections")
+            position_text = '\n'.join(position_recommendations)
+            logger.info(f"📋 Enhanced position recommendations prepared")
 
             # Get first article link for the Link field
             session_articles = report_data.get('session_articles', [])
@@ -1025,7 +1032,11 @@ class GmailPoller:
                             first_article_link = url_match.group()
                             break
             
-            logger.info(f"🔗 Link field will be set to: {first_article_link or 'None'}")
+            # Use search term for sector instead of generic "Portfolio Report"
+            primary_search_term = report_data.get('primary_search_term', 'Mixed Signals')
+            
+            # Create standardized timestamp format
+            timestamp_str = datetime.now().strftime('%B %d, %Y %I:%M %p')
 
             data = {
                 "parent": {"database_id": self.notion_database_id},
@@ -1046,7 +1057,7 @@ class GmailPoller:
                         "url": first_article_link if first_article_link else "https://example.com"  # Fallback URL
                     },
                     "Sector": {
-                        "select": {"name": "Portfolio Report"}
+                        "select": {"name": primary_search_term}
                     },
                     "Reasoning": {
                         "rich_text": [{"text": {"content": report_data.get('executive_summary', '')}}]
@@ -1061,7 +1072,7 @@ class GmailPoller:
                         "date": {"start": report_data.get('analysis_timestamp', datetime.now().isoformat())}
                     },
                     "Search Term": {
-                        "rich_text": [{"text": {"content": "consolidated_report"}}]
+                        "rich_text": [{"text": {"content": ', '.join(report_data.get('search_terms', ['consolidated_report']))}}]
                     }
                 }
             }
@@ -1116,7 +1127,7 @@ class GmailPoller:
                 }
             })
             
-            # Position Recommendations with Financial Details
+            # Position Recommendations with Enhanced Financial Details (different from ETF tags)
             if position_text:
                 children.append({
                     "object": "block",
@@ -1135,11 +1146,12 @@ class GmailPoller:
                     }
                 })
                 
-                # Add specific trading instructions
+                # Add specific trading instructions for strong buys
                 if strong_buys:
-                    trading_notes = "📈 EXECUTION NOTES:\n"
+                    trading_notes = "📈 EXECUTION STRATEGY:\n"
                     for pos in strong_buys[:2]:
-                        trading_notes += f"• {pos['ticker']}: Consider 2-5% position size, set stop-loss at -8%, target +15-20%\n"
+                        trading_notes += f"• {pos['ticker']}: 2-5% position size, stop-loss at -8%, profit target +15-20%\n"
+                        trading_notes += f"  Current price: ${pos['entry_price']:.2f} | Volume: {pos['volume']:,}\n"
                     
                     children.append({
                         "object": "block",
@@ -1149,21 +1161,37 @@ class GmailPoller:
                             "icon": {"emoji": "📈"}
                         }
                     })
+                
+                # Add HOLD strategy explanation if no strong positions
+                if not strong_buys and not strong_sells:
+                    hold_strategy = """📊 HOLD REASONING:
+Market signals show potential but lack strong conviction thresholds.
+• Monitoring for volume confirmation and breakout patterns
+• Current watchlist positioning allows for quick deployment
+• Awaiting clearer directional momentum before major allocation"""
+                    
+                    children.append({
+                        "object": "block",
+                        "type": "callout",
+                        "callout": {
+                            "rich_text": [{"type": "text", "text": {"content": hold_strategy}}],
+                            "icon": {"emoji": "⏸️"}
+                        }
+                    })
             
-            # Risk Assessment with Financial Metrics
-            risk_content = f"""
-📊 MARKET METRICS:
+            # Enhanced Risk Assessment with Financial Metrics and stronger warnings
+            risk_content = f"""📊 MARKET METRICS:
 • Sentiment: {report_data.get('market_sentiment', 'Mixed')}
 • Conviction: {report_data.get('conviction_level', 'Medium')}
 • Risk Level: {report_data.get('risk_level', 'Medium')}
 • Session Signals: {len(report_data.get('session_articles', []))}
 • Strong Positions: {len(strong_buys + strong_sells)}
 
-⚠️ RISK FACTORS:
-• Portfolio concentration in thematic ETFs
+⚠️ KEY RISK FACTORS:
+• 🔴 Portfolio concentration in thematic ETFs - MAJOR RISK
 • Market volatility may impact momentum strategies
 • Consider diversification across sectors
-"""
+• Thematic ETFs can experience high correlation during drawdowns"""
             
             children.append({
                 "object": "block",
@@ -1182,17 +1210,28 @@ class GmailPoller:
                 }
             })
             
-            # Session Articles (collapsible)
+            # Enhanced Session Articles with context and signals
             if report_data.get('session_articles'):
                 article_list = []
                 for i, article in enumerate(report_data['session_articles'][:10]):
                     confidence = article.get('confidence', 0)
                     title = article.get('title', 'Unknown')
+                    signal = article.get('signal', 'Neutral')
+                    search_term = article.get('search_term', '')
+                    
+                    # Create 5-word summary from title
+                    title_words = title.split()
+                    summary = ' '.join(title_words[:5]) + ('...' if len(title_words) > 5 else '')
+                    
+                    signal_emoji = "📈" if signal == "Bullish" else "📉" if signal == "Bearish" else "➖"
+                    
+                    article_text = f"{signal_emoji} (Confidence: {confidence}/10) – \"{summary}\" [{search_term}]"
+                    
                     article_list.append({
                         "object": "block",
                         "type": "bulleted_list_item",
                         "bulleted_list_item": {
-                            "rich_text": [{"type": "text", "text": {"content": f"{title} (Confidence: {confidence}/10)"}}]
+                            "rich_text": [{"type": "text", "text": {"content": article_text}}]
                         }
                     })
                 
@@ -1353,7 +1392,18 @@ def create_consolidated_signal_report(all_analyses, session_timestamp):
             primary_sectors[sector] = 0
         primary_sectors[sector] += analysis.get('confidence', 0)
     
+    # Get search terms from session articles for sector classification
+    search_terms = set()
+    for analysis in all_analyses:
+        search_term = analysis.get('source_article', {}).get('search_term', '')
+        if search_term:
+            search_terms.add(search_term)
+    
+    # Calculate dominant sector
     dominant_sector = max(primary_sectors.keys(), key=lambda s: primary_sectors[s]) if primary_sectors else 'Mixed'
+    
+    # Use primary search term as sector or fall back to dominant sector
+    primary_search_term = list(search_terms)[0] if search_terms else dominant_sector
     
     # Create consolidated report
     report = {
@@ -1366,11 +1416,15 @@ def create_consolidated_signal_report(all_analyses, session_timestamp):
         'strong_sells': strong_sells[:3],  # Top 3
         'watchlist': [etf for etf, data in etf_positions.items() if 0.3 <= abs(data['net_score']) < 1.0][:10],
         'risk_level': 'High' if any(a.get('sector') == 'Volatility' for a in high_conviction) else 'Medium',
+        'primary_search_term': primary_search_term,
+        'search_terms': list(search_terms),
         'session_articles': [
             {
-                'title': a.get('title', ''),
+                'title': a.get('source_article', {}).get('title', a.get('title', '')),
                 'confidence': a.get('confidence', 0),
-                'link': a.get('source_article', {}).get('link', '')
+                'link': a.get('source_article', {}).get('link', ''),
+                'search_term': a.get('source_article', {}).get('search_term', ''),
+                'signal': a.get('signal', 'Neutral')
             } for a in all_analyses
         ],
         'analysis_timestamp': datetime.now().isoformat()

@@ -7,6 +7,7 @@ Matches your server monitoring workflow with simple commands
 import sys
 import os
 import argparse
+import subprocess
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -50,6 +51,11 @@ def main():
     memory_parser.add_argument('--days', type=int, default=7, help='Days to look back (default: 7)')
     memory_parser.add_argument('--cleanup', type=int, help='Clean up data older than N days')
     
+    # Run command (main analysis)
+    run_parser = subparsers.add_parser('run', help='Run news analysis')
+    run_parser.add_argument('--legacy', action='store_true', help='Use legacy analyzer')
+    run_parser.add_argument('--test', action='store_true', help='Run in test mode')
+    
     args = parser.parse_args()
     
     if not args.command:
@@ -88,14 +94,25 @@ def main():
             else:
                 monitor.run_full_check()
     
+    elif args.command == 'run':
+        if args.test:
+            print("🧪 Running MarketMan in test mode...")
+            if args.legacy:
+                subprocess.run(['python', 'src/core/news_gpt_analyzer.py', 'test'])
+            else:
+                subprocess.run(['python', '-m', 'src.core.news_analyzer_refactored', 'test'])
+        else:
+            print("🚀 Running MarketMan analysis...")
+            if args.legacy:
+                subprocess.run(['python', 'src/core/news_gpt_analyzer.py'])
+            else:
+                subprocess.run(['python', '-m', 'src.core.news_analyzer_refactored'])
+    
     elif args.command == 'send':
         success = send_pushover_notification(args.message, args.title, args.priority)
         sys.exit(0 if success else 1)
     
     elif args.command == 'service':
-        import subprocess
-        import os
-        
         service_file = '/root/marketMan/marketman.service'
         
         if args.action == 'install':
@@ -111,7 +128,6 @@ def main():
     elif args.command == 'setup':
         if args.notion:
             print("🗄️ Setting up enhanced Notion database with memory support...")
-            import subprocess
             subprocess.run(['python', 'notion_setup_enhanced.py', '--create'])
         else:
             print("Please specify --notion for database setup")

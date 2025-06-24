@@ -1,0 +1,149 @@
+#!/bin/bash
+"""
+MarketMan Cron Setup Helper
+Easily install and manage MarketMan cron jobs
+"""
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MARKETMAN_DIR="$(dirname "$SCRIPT_DIR")"
+CRON_FILE="$MARKETMAN_DIR/cron-setup.txt"
+TEMP_CRON="/tmp/marketman-cron-$(date +%s)"
+
+echo "🕐 MarketMan Cron Setup Helper"
+echo "==============================="
+
+# Function to show current MarketMan cron jobs
+show_current() {
+    echo "📋 Current MarketMan cron jobs:"
+    crontab -l 2>/dev/null | grep -E "(marketman|MarketMan)" || echo "   No MarketMan cron jobs found"
+}
+
+# Function to install cron jobs
+install_cron() {
+    echo "📦 Installing MarketMan cron jobs..."
+    
+    # Check if cron file exists
+    if [ ! -f "$CRON_FILE" ]; then
+        echo "❌ Error: cron-setup.txt not found at $CRON_FILE"
+        exit 1
+    fi
+    
+    # Get current crontab (if any)
+    crontab -l 2>/dev/null > "$TEMP_CRON" || touch "$TEMP_CRON"
+    
+    # Remove existing MarketMan entries
+    grep -v -E "(marketman|MarketMan)" "$TEMP_CRON" > "${TEMP_CRON}.clean" 2>/dev/null || touch "${TEMP_CRON}.clean"
+    
+    # Extract only the actual cron entries from setup file
+    grep -E "^[0-9*]" "$CRON_FILE" >> "${TEMP_CRON}.clean"
+    
+    # Install new crontab
+    crontab "${TEMP_CRON}.clean"
+    
+    # Cleanup
+    rm -f "$TEMP_CRON" "${TEMP_CRON}.clean"
+    
+    echo "✅ MarketMan cron jobs installed successfully!"
+    echo ""
+    show_current
+}
+
+# Function to remove MarketMan cron jobs
+remove_cron() {
+    echo "🗑️ Removing MarketMan cron jobs..."
+    
+    # Get current crontab
+    crontab -l 2>/dev/null > "$TEMP_CRON" || touch "$TEMP_CRON"
+    
+    # Remove MarketMan entries
+    grep -v -E "(marketman|MarketMan)" "$TEMP_CRON" > "${TEMP_CRON}.clean" 2>/dev/null || touch "${TEMP_CRON}.clean"
+    
+    # Install cleaned crontab
+    crontab "${TEMP_CRON}.clean"
+    
+    # Cleanup
+    rm -f "$TEMP_CRON" "${TEMP_CRON}.clean"
+    
+    echo "✅ MarketMan cron jobs removed!"
+}
+
+# Function to show log tail
+show_logs() {
+    echo "📄 Recent MarketMan logs:"
+    echo "========================"
+    if [ -f "/var/log/marketman.log" ]; then
+        tail -n 20 /var/log/marketman.log
+    else
+        echo "   No logs found at /var/log/marketman.log"
+        echo "   Logs will be created when cron jobs run"
+    fi
+}
+
+# Function to test the setup
+test_setup() {
+    echo "🧪 Testing MarketMan CLI commands..."
+    echo "===================================="
+    
+    cd "$MARKETMAN_DIR"
+    
+    echo "Testing marketman CLI..."
+    if ./bin/marketman test --pushover; then
+        echo "✅ MarketMan CLI working"
+    else
+        echo "❌ MarketMan CLI test failed"
+    fi
+    
+    echo ""
+    echo "Testing marketman-alerts CLI..."
+    if ./bin/marketman-alerts stats >/dev/null 2>&1; then
+        echo "✅ MarketMan-alerts CLI working"
+    else
+        echo "❌ MarketMan-alerts CLI test failed"
+    fi
+    
+    echo ""
+    echo "Testing refactored analyzer..."
+    if python -m src.core.news_analyzer_refactored test >/dev/null 2>&1; then
+        echo "✅ Refactored analyzer working"
+    else
+        echo "❌ Refactored analyzer test failed"
+    fi
+}
+
+# Parse command line arguments
+case "${1:-help}" in
+    "install")
+        install_cron
+        ;;
+    "remove")
+        remove_cron
+        ;;
+    "show")
+        show_current
+        ;;
+    "logs")
+        show_logs
+        ;;
+    "test")
+        test_setup
+        ;;
+    "help"|*)
+        echo "Usage: $0 [command]"
+        echo ""
+        echo "Commands:"
+        echo "  install  - Install MarketMan cron jobs"
+        echo "  remove   - Remove MarketMan cron jobs"
+        echo "  show     - Show current MarketMan cron jobs"
+        echo "  logs     - Show recent MarketMan logs"
+        echo "  test     - Test MarketMan CLI commands"
+        echo "  help     - Show this help message"
+        echo ""
+        echo "Examples:"
+        echo "  $0 install  # Install recommended cron jobs"
+        echo "  $0 show     # See what's currently installed" 
+        echo "  $0 logs     # Check recent activity"
+        echo "  $0 remove   # Remove all MarketMan cron jobs"
+        ;;
+esac

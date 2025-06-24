@@ -1,0 +1,89 @@
+# MarketMan Cron Jobs - Updated for CLI and Refactored System
+# Add to crontab with: crontab -e
+# Monitor logs with: tail -f /var/log/marketman.log
+
+# ==========================================
+# CORE MARKETMAN ANALYSIS
+# ==========================================
+
+# Run news analyzer every 15 minutes using refactored system
+*/15 * * * * cd /root/marketMan && ./bin/marketman run >> /var/log/marketman.log 2>&1
+
+# Process alert batches every 10 minutes (handles smart batching)
+*/10 * * * * cd /root/marketMan && ./bin/marketman-alerts process >> /var/log/marketman.log 2>&1
+
+# ==========================================
+# DAILY MAINTENANCE
+# ==========================================
+
+# Clean up Gmail alerts daily at 9 AM
+0 9 * * * cd /root/marketMan && ./bin/gmail-organizer auto >> /var/log/marketman.log 2>&1
+
+# Daily memory statistics and patterns check at 8 AM
+0 8 * * * cd /root/marketMan && ./bin/marketman memory --stats >> /var/log/marketman.log 2>&1
+
+# Daily system health check at 7 AM
+0 7 * * * cd /root/marketMan && ./bin/marketman monitor --system >> /var/log/marketman.log 2>&1
+
+# ==========================================
+# WEEKLY MAINTENANCE
+# ==========================================
+
+# Weekly memory cleanup (keep 30 days) every Sunday at 2 AM
+0 2 * * 0 cd /root/marketMan && ./bin/marketman memory --cleanup 30 >> /var/log/marketman.log 2>&1
+
+# Weekly system test every Sunday at 6 AM
+0 6 * * 0 cd /root/marketMan && ./bin/marketman test --all >> /var/log/marketman.log 2>&1
+
+# ==========================================
+# LOG MANAGEMENT
+# ==========================================
+
+# Rotate MarketMan logs weekly (keep 4 weeks)
+0 3 * * 0 /usr/sbin/logrotate -f /etc/logrotate.d/marketman
+
+# ==========================================
+# OPTIONAL: HIGH-FREQUENCY TRADING SETUP
+# ==========================================
+
+# Uncomment for high-frequency trading (every 5 minutes)
+# */5 * * * * cd /root/marketMan && ./bin/marketman run >> /var/log/marketman-hf.log 2>&1
+# */3 * * * * cd /root/marketMan && ./bin/marketman-alerts process >> /var/log/marketman-hf.log 2>&1
+
+# ==========================================
+# OPTIONAL: CONSERVATIVE TRADING SETUP  
+# ==========================================
+
+# Uncomment for conservative trading (twice daily)
+# 0 9,17 * * * cd /root/marketMan && ./bin/marketman run >> /var/log/marketman-conservative.log 2>&1
+# 15 9,17 * * * cd /root/marketMan && ./bin/marketman-alerts process >> /var/log/marketman-conservative.log 2>&1
+
+# ==========================================
+# EMERGENCY MONITORING
+# ==========================================
+
+# Send daily status report at 6 PM
+0 18 * * * cd /root/marketMan && ./bin/marketman send "MarketMan daily status: $(./bin/marketman-alerts stats | head -n 3 | tail -n 1)" --title "MarketMan Daily Report" >> /var/log/marketman.log 2>&1
+
+# ==========================================
+# USAGE INSTRUCTIONS
+# ==========================================
+
+# To apply these cron jobs:
+# 1. Copy this file: cp cron-setup.txt /tmp/marketman-cron
+# 2. Edit as needed: nano /tmp/marketman-cron  
+# 3. Install: crontab /tmp/marketman-cron
+# 4. Verify: crontab -l
+# 5. Monitor: tail -f /var/log/marketman.log
+
+# To create logrotate config:
+# sudo tee /etc/logrotate.d/marketman << EOF
+# /var/log/marketman.log {
+#     weekly
+#     rotate 4
+#     compress
+#     missingok
+#     notifempty
+#     create 644 root root
+# }
+# EOF
