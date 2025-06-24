@@ -55,36 +55,38 @@ def generate_tactical_explanation(analysis_result, article_title):
             return None
             
         prompt = f"""
-You are MarketMan's tactical advisor. A trading signal just fired and you need to explain it like you're briefing a sharp trader who wants the real deal - no fluff, just tactical insight.
+You are MarketMan's senior portfolio strategist. Generate a tactical trading brief using proper financial terminology and specific actionable recommendations.
 
 SIGNAL DATA:
 - Article: "{article_title}"
-- Signal: {signal} ({confidence}/10 confidence)
+- Signal: {signal} ({confidence}/10 conviction)
 - Sector: {sector}
-- Key ETFs: {', '.join(etfs[:5])}
-- AI Reasoning: "{reasoning}"
+- Target ETFs: {', '.join(etfs[:5])}
+- Market Thesis: "{reasoning}"
 
-Write a tactical explanation in this exact style:
+Write a professional trading brief in this format:
 
-"Alright, here's the skinny:
+"**TACTICAL BRIEF - {signal.upper()} SIGNAL**
 
-What the article's saying (and why MarketMan slapped on a "{signal.upper()}"):
-[Explain the core thesis in 2-3 sentences - why this signal fired, what the market dynamics are]
+**Market Thesis:**
+[2-3 sentences explaining the fundamental catalyst and why this creates an opportunity]
 
-So…{signal.lower()} what?
-That "{signal.upper()}" label is shorthand for "[tactical translation]"—i.e.:
-• [Specific ETF recommendations with tickers]
-• [Alternative plays or hedge strategies]
-• [Direct positioning advice]
+**Recommended Positioning:**
+That {signal.upper()} signal translates to:
+• **Primary Trade**: [Specific ETF] - [Entry strategy with price levels]
+• **Position Size**: [Risk-appropriate allocation %]
+• **Stop Loss**: [Specific price level or %]
+• **Profit Target**: [Price target with timeline]
 
-The tactical takeaway:
-• Short term → [immediate action/timing]
-• Medium term → [what to watch for/risks]
-• Tactical → [specific entry/exit strategy, alerts to set]
+**Risk Management:**
+• **Upside Scenario**: [Best case outcome and price targets]
+• **Downside Risk**: [Key risk factors and hedge strategies]  
+• **Time Horizon**: [Short/medium/long-term outlook]
 
-Think of that "{signal.upper()}" as [metaphor for the signal] 🚀🛑"
+**Execution Notes:**
+[Specific entry timing, volume considerations, or alternative plays]"
 
-Keep it conversational, direct, and tactical. Use the trader's vernacular. Be specific about ETF tickers and actionable steps. Maximum 200 words.
+Use proper financial terminology: entry/exit levels, position sizing, risk-reward ratios, stop-losses, profit targets. Be specific with actionable price levels and percentages. Maximum 250 words.
 """
 
         response = openai.ChatCompletion.create(
@@ -103,18 +105,18 @@ Keep it conversational, direct, and tactical. Use the trader's vernacular. Be sp
         return None
 
 def get_microlink_image(url):
-    """Fetch article preview image using Microlink API (OG image, fallback to logo)"""
+    """Fetch article preview image using Microlink API with enhanced fallback logic"""
     try:
         logger.debug(f"🖼️ Fetching hero image for: {url}")
         params = {
             "url": url,
             "meta": "true",
             "screenshot": "false",
-            "palette": "false",  # Don't need color analysis
-            "video": "false"     # Don't need video processing
+            "palette": "false",
+            "video": "false"
         }
         
-        response = requests.get("https://api.microlink.io", params=params, timeout=15)
+        response = requests.get("https://api.microlink.io", params=params, timeout=10)
         if response.status_code == 200:
             try:
                 json_data = response.json()
@@ -123,23 +125,44 @@ def get_microlink_image(url):
                 logger.warning("⚠️ Failed to parse Microlink JSON response")
                 return None
             
-            # Prefer OG image (hero image)
+            # Try multiple image sources in order of preference
+            image_sources = []
+            
+            # 1. Primary OG image (hero image)
             image_data = data.get("image", {})
             if image_data and isinstance(image_data, dict):
                 image_url = image_data.get("url")
                 if image_url:
-                    logger.info(f"✅ Found hero image via Microlink: {image_url[:60]}...")
-                    return image_url
-                
-            # Fallback to logo if no OG image
+                    image_sources.append(('hero', image_url))
+            
+            # 2. Screenshot as fallback
+            screenshot_data = data.get("screenshot", {})
+            if screenshot_data and isinstance(screenshot_data, dict):
+                screenshot_url = screenshot_data.get("url")
+                if screenshot_url:
+                    image_sources.append(('screenshot', screenshot_url))
+            
+            # 3. Logo as final fallback
             logo_data = data.get("logo", {})
             if logo_data and isinstance(logo_data, dict):
                 logo_url = logo_data.get("url")
                 if logo_url:
-                    logger.info(f"✅ Using logo as fallback: {logo_url[:60]}...")
-                    return logo_url
+                    image_sources.append(('logo', logo_url))
+            
+            # Test each image source for accessibility
+            for source_type, image_url in image_sources:
+                try:
+                    # Quick HEAD request to verify image is accessible
+                    img_response = requests.head(image_url, timeout=5)
+                    if img_response.status_code == 200:
+                        content_type = img_response.headers.get('content-type', '')
+                        if content_type.startswith('image/'):
+                            logger.info(f"✅ Found {source_type} image: {image_url[:60]}...")
+                            return image_url
+                except:
+                    continue
                 
-            logger.debug("⚠️ No hero image or logo found in Microlink response")
+            logger.debug("⚠️ No accessible images found via Microlink")
             
         elif response.status_code == 429:
             logger.warning(f"⚠️ Microlink API rate limited (429) - will retry later")
@@ -149,6 +172,21 @@ def get_microlink_image(url):
             
     except Exception as e:
         logger.warning(f"⚠️ Error fetching hero image: {e}")
+    return None
+
+def get_fallback_cover_image(session_analyses):
+    """Get cover image from the first available article in the session"""
+    for analysis in session_analyses:
+        source_article = analysis.get('source_article', {})
+        article_link = source_article.get('link')
+        
+        if article_link:
+            logger.info(f"🖼️ Trying cover image from: {source_article.get('title', 'Unknown')[:50]}...")
+            cover_image = get_microlink_image(article_link)
+            if cover_image:
+                return cover_image
+    
+    logger.debug("⚠️ No cover images found for any articles in session")
     return None
 
 def clean_google_redirect_url(url):
@@ -399,7 +437,7 @@ class NewsAnalyzer:
         self.gmail_poller = GmailPoller()
     
     def process_alerts(self):
-        """Main function to process Google Alerts"""
+        """Main function to process Google Alerts - now creates consolidated reports"""
         logger.info("Starting to process Google Alerts...")
 
         # Fetch alerts from Gmail
@@ -409,7 +447,9 @@ class NewsAnalyzer:
             logger.info("No new alerts found")
             return
 
-        # Track all ETFs mentioned in this batch for pattern analysis
+        # Collect all analyses for consolidated reporting
+        session_analyses = []
+        session_timestamp = datetime.now().isoformat()
         all_mentioned_etfs = set()
         
         for alert in alerts:
@@ -427,93 +467,65 @@ class NewsAnalyzer:
                     if not analysis:
                         continue
 
-                    # Fetch article image using Microlink (for Notion hero images)
-                    article_image = None
-                    try:
-                        # Add small delay between requests to be respectful
-                        time.sleep(0.5)
-                        article_image = get_microlink_image(article['link'])
-                        if article_image:
-                            logger.info(f"🖼️ Hero image ready for Notion")
-                    except Exception as e:
-                        logger.warning(f"⚠️ Skipping hero image due to error: {e}")
-                        article_image = None
+                    # Add metadata for consolidated reporting
+                    analysis['source_article'] = {
+                        'title': article['title'],
+                        'link': article['link'],
+                        'search_term': alert['search_term'],
+                        'timestamp': alert['timestamp']
+                    }
+
+                    # Focus ETFs using sector intelligence
+                    focused_etfs, primary_sector = categorize_etfs_by_sector(analysis.get('affected_etfs', []))
+                    analysis['focused_etfs'] = focused_etfs
+                    analysis['primary_sector'] = primary_sector
+                    
+                    # Track for pattern analysis
+                    all_mentioned_etfs.update(focused_etfs)
+                    
+                    # Add to session collection
+                    session_analyses.append(analysis)
                     
                     signal = analysis.get('signal', 'Neutral')
                     confidence = analysis.get('confidence', 0)
-                    etfs = analysis.get('affected_etfs', [])
-                    
-                    # Focus ETFs using sector intelligence
-                    focused_etfs, primary_sector = categorize_etfs_by_sector(etfs)
-                    
-                    # Track ETFs for pattern analysis
-                    all_mentioned_etfs.update(focused_etfs)
-                    
-                    # Get fresh contextual insights for this specific analysis
-                    contextual_insight = memory.get_contextual_insight(analysis, focused_etfs)
-                    
-                    # Generate tactical explanation for high-confidence signals
-                    tactical_explanation = None
-                    if confidence >= 7:
-                        logger.info(f"📈 Generating tactical explanation for {confidence}/10 signal...")
-                        tactical_explanation = generate_tactical_explanation(analysis, article['title'])
                     
                     logger.info(f"📊 {signal} signal ({confidence}/10) - {primary_sector or 'Mixed'} - {article['title'][:60]}...")
-                    
-                    if contextual_insight:
-                        logger.info(f"🧠 Context: {contextual_insight[:100]}...")
-                    
-                    if DEBUG_MODE:
-                        logger.debug(f"🔗 Article URL: {article['link']}")
-                        if article_image:
-                            logger.debug(f"🖼️ Image URL: {article_image}")
-                        if contextual_insight:
-                            logger.debug(f"🧠 Full Context: {contextual_insight}")
-                        if tactical_explanation:
-                            logger.debug(f"📈 Tactical: {tactical_explanation[:100]}...")
-
-                    # Prepare data for logging
-                    analysis_data = {
-                        "title": article['title'],
-                        "signal": signal,
-                        "confidence": confidence,
-                        "etfs": focused_etfs,  # Use focused ETFs instead of full list
-                        "sector": primary_sector,  # Add primary sector
-                        "reasoning": analysis.get('reasoning', ''),
-                        "timestamp": alert['timestamp'],
-                        "link": article['link'],
-                        "search_term": alert['search_term'],
-                        "image_url": article_image,
-                        "contextual_insight": contextual_insight,
-                        "tactical_explanation": tactical_explanation
-                    }
-                    
-                    # Log to Notion and get the page URL
-                    notion_url = self.gmail_poller.log_to_notion(analysis_data)
-                    
-                    # Queue alert for batching (replaces direct Pushover send)
-                    if confidence >= 7:
-                        logger.info(f"📋 Queueing alert: {signal} ({confidence}/10) - {article['title'][:50]}...")
-                        alert_id = queue_alert(
-                            signal=signal,
-                            confidence=confidence,
-                            title=article['title'],
-                            reasoning=analysis.get('reasoning', ''),
-                            etfs=focused_etfs,
-                            sector=primary_sector,
-                            article_url=notion_url,
-                            search_term=alert['search_term'],
-                            strategy=CURRENT_BATCH_STRATEGY
-                        )
-                        logger.info(f"✅ Alert queued: {alert_id[:8]}")
-                    else:
-                        logger.info(f"⏭️ Skipping low confidence alert: {confidence}/10")
-
-                    logger.info(f"✅ Processed: {signal} ({confidence}/10)")
 
                 except Exception as e:
                     logger.error(f"Error processing article '{article['title']}': {e}")
                     continue
+        
+        # Create consolidated signal report if we have analyses
+        if session_analyses:
+            logger.info(f"� Creating consolidated report from {len(session_analyses)} analyses...")
+            
+            consolidated_report = create_consolidated_signal_report(session_analyses, session_timestamp)
+            
+            if consolidated_report:
+                # Log consolidated report to Notion
+                notion_url = self.gmail_poller.log_consolidated_report_to_notion(consolidated_report)
+                
+                # Queue high-conviction signals for alerts
+                high_conviction_signals = [a for a in session_analyses if a.get('confidence', 0) >= 8]
+                
+                if high_conviction_signals:
+                    logger.info(f"📋 Queueing {len(high_conviction_signals)} high-conviction signals...")
+                    
+                    for analysis in high_conviction_signals:
+                        alert_id = queue_alert(
+                            signal=analysis.get('signal', 'Neutral'),
+                            confidence=analysis.get('confidence', 0),
+                            title=f"High Conviction: {analysis.get('primary_sector', 'Mixed')} Signal",
+                            reasoning=analysis.get('reasoning', ''),
+                            etfs=analysis.get('focused_etfs', []),
+                            sector=analysis.get('primary_sector', 'Mixed'),
+                            article_url=notion_url,
+                            search_term="consolidated_report",
+                            strategy=CURRENT_BATCH_STRATEGY
+                        )
+                        logger.info(f"✅ Alert queued: {alert_id[:8]}")
+                else:
+                    logger.info("⏭️ No high-conviction signals to queue")
         
         # After processing all alerts, check for significant new patterns
         if all_mentioned_etfs:
@@ -928,6 +940,296 @@ class GmailPoller:
             logger.error(f"Error logging patterns to Notion: {e}")
             return False
 
+    def log_consolidated_report_to_notion(self, report_data):
+        """Log consolidated signal report to Notion with enhanced financial formatting and cover image"""
+        if not self.notion_token or not self.notion_database_id:
+            logger.debug("Notion credentials not configured, skipping logging")
+            return False
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.notion_token}",
+                "Content-Type": "application/json",
+                "Notion-Version": "2022-06-28"
+            }
+
+            # Create comprehensive title
+            title = f"📊 {report_data.get('title', 'Signal Report')}"
+            
+            # Build ETF list for the ETFs field (clean ticker symbols only)
+            etf_list = []
+            strong_buys = report_data.get('strong_buys', [])
+            strong_sells = report_data.get('strong_sells', [])
+            watchlist = report_data.get('watchlist', [])
+            
+            # Add strong positions (ticker symbols only, no prices in multi_select)
+            for pos in strong_buys[:3]:
+                if pos['ticker'] not in etf_list:
+                    etf_list.append(pos['ticker'])
+            for pos in strong_sells[:2]:
+                if pos['ticker'] not in etf_list:
+                    etf_list.append(pos['ticker'])
+            
+            # If no strong positions, add watchlist items
+            if not etf_list and watchlist:
+                for etf in watchlist[:5]:
+                    if etf not in etf_list:
+                        etf_list.append(etf)
+            
+            # If still empty, add some default ETFs based on session articles
+            if not etf_list:
+                session_articles = report_data.get('session_articles', [])
+                default_etfs = ["ICLN", "TAN", "QCLN", "PBW", "ITA"][:3]  # CleanTech focus based on recent alerts
+                etf_list.extend(default_etfs)
+            
+            logger.info(f"📊 ETFs to add to Notion: {etf_list}")
+            
+            # Build position summary text with prices for display in reasoning
+            position_summary = []
+            
+            if strong_buys:
+                position_summary.append(f"🟢 STRONG BUYS ({len(strong_buys)})")
+                for pos in strong_buys[:3]:  # Top 3
+                    position_summary.append(f"• {pos['ticker']}: ENTRY ${pos['entry_price']:.2f} | CONVICTION {pos['conviction']:.1f}/10 | VOL {pos['volume']:,}")
+            
+            if strong_sells:
+                position_summary.append(f"🔴 STRONG SELLS ({len(strong_sells)})")
+                for pos in strong_sells[:2]:  # Top 2
+                    position_summary.append(f"• {pos['ticker']}: ENTRY ${pos['entry_price']:.2f} | CONVICTION {pos['conviction']:.1f}/10 | VOL {pos['volume']:,}")
+            
+            if watchlist:
+                position_summary.append(f"👁️ WATCHLIST: {', '.join(watchlist[:5])}")
+            
+            position_text = '\n'.join(position_summary)
+            logger.info(f"📋 Position summary prepared with {len(position_summary)} sections")
+
+            # Get first article link for the Link field
+            session_articles = report_data.get('session_articles', [])
+            first_article_link = ""
+            for article in session_articles:
+                link = article.get('link', '')
+                if link and link.strip() and link.startswith('http'):
+                    first_article_link = link.strip()
+                    break
+            
+            # If no valid link found, try to use a default or construct one
+            if not first_article_link and session_articles:
+                # Try to find any article with a title that might have a link
+                for article in session_articles:
+                    title = article.get('title', '')
+                    if title and 'http' in title:
+                        # Extract URL from title if embedded
+                        import re
+                        url_match = re.search(r'https?://[^\s]+', title)
+                        if url_match:
+                            first_article_link = url_match.group()
+                            break
+            
+            logger.info(f"🔗 Link field will be set to: {first_article_link or 'None'}")
+
+            data = {
+                "parent": {"database_id": self.notion_database_id},
+                "properties": {
+                    "Title": {
+                        "title": [{"text": {"content": title}}]
+                    },
+                    "Signal": {
+                        "select": {"name": report_data.get('market_sentiment', 'Mixed')}
+                    },
+                    "Confidence": {
+                        "number": 9 if report_data.get('conviction_level') == 'High' else 7 if report_data.get('conviction_level') == 'Medium' else 5
+                    },
+                    "ETFs": {
+                        "multi_select": [{"name": etf_name} for etf_name in etf_list[:5]]  # Limit to 5 to avoid Notion limits
+                    },
+                    "Link": {
+                        "url": first_article_link if first_article_link else "https://example.com"  # Fallback URL
+                    },
+                    "Sector": {
+                        "select": {"name": "Portfolio Report"}
+                    },
+                    "Reasoning": {
+                        "rich_text": [{"text": {"content": report_data.get('executive_summary', '')}}]
+                    },
+                    "Action": {
+                        "select": {"name": "REVIEW" if len(strong_buys + strong_sells) > 0 else "HOLD"}
+                    },
+                    "Status": {
+                        "select": {"name": "New"}
+                    },
+                    "Timestamp": {
+                        "date": {"start": report_data.get('analysis_timestamp', datetime.now().isoformat())}
+                    },
+                    "Search Term": {
+                        "rich_text": [{"text": {"content": "consolidated_report"}}]
+                    }
+                }
+            }
+
+            # Try to get cover image from session articles
+            cover_image = None
+            session_articles = report_data.get('session_articles', [])
+            if session_articles:
+                # Try to get cover from first article that has a link
+                for article_data in session_articles:
+                    article_link = article_data.get('link')
+                    if article_link and article_link.strip():
+                        logger.info(f"🖼️ Trying cover image from: {article_data.get('title', 'Unknown')[:50]}...")
+                        cover_image = get_microlink_image(article_link)
+                        if cover_image:
+                            logger.info(f"✅ Found cover image: {cover_image[:100]}...")
+                            break
+                        else:
+                            logger.debug(f"❌ No image found for: {article_link[:100]}...")
+                
+                # If no cover found, log the issue
+                if not cover_image:
+                    logger.info(f"⚠️ No cover images found from {len(session_articles)} session articles")
+
+            # Add cover image if found
+            if cover_image:
+                data["cover"] = {
+                    "type": "external",
+                    "external": {"url": cover_image}
+                }
+                logger.info(f"🖼️ Adding cover image to consolidated report")
+            else:
+                logger.debug("⚠️ No cover image found for consolidated report")
+
+            # --- Build enhanced children blocks for financial report ---
+            children = []
+            
+            # Executive Summary
+            children.append({
+                "object": "block",
+                "type": "heading_2",
+                "heading_2": {
+                    "rich_text": [{"type": "text", "text": {"content": "📋 Executive Summary"}}]
+                }
+            })
+            
+            children.append({
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [{"type": "text", "text": {"content": report_data.get('executive_summary', '')}}]
+                }
+            })
+            
+            # Position Recommendations with Financial Details
+            if position_text:
+                children.append({
+                    "object": "block",
+                    "type": "heading_2",
+                    "heading_2": {
+                        "rich_text": [{"type": "text", "text": {"content": "💼 Position Recommendations"}}]
+                    }
+                })
+                
+                children.append({
+                    "object": "block",
+                    "type": "code",
+                    "code": {
+                        "rich_text": [{"type": "text", "text": {"content": position_text}}],
+                        "language": "plain text"
+                    }
+                })
+                
+                # Add specific trading instructions
+                if strong_buys:
+                    trading_notes = "📈 EXECUTION NOTES:\n"
+                    for pos in strong_buys[:2]:
+                        trading_notes += f"• {pos['ticker']}: Consider 2-5% position size, set stop-loss at -8%, target +15-20%\n"
+                    
+                    children.append({
+                        "object": "block",
+                        "type": "callout",
+                        "callout": {
+                            "rich_text": [{"type": "text", "text": {"content": trading_notes}}],
+                            "icon": {"emoji": "📈"}
+                        }
+                    })
+            
+            # Risk Assessment with Financial Metrics
+            risk_content = f"""
+📊 MARKET METRICS:
+• Sentiment: {report_data.get('market_sentiment', 'Mixed')}
+• Conviction: {report_data.get('conviction_level', 'Medium')}
+• Risk Level: {report_data.get('risk_level', 'Medium')}
+• Session Signals: {len(report_data.get('session_articles', []))}
+• Strong Positions: {len(strong_buys + strong_sells)}
+
+⚠️ RISK FACTORS:
+• Portfolio concentration in thematic ETFs
+• Market volatility may impact momentum strategies
+• Consider diversification across sectors
+"""
+            
+            children.append({
+                "object": "block",
+                "type": "toggle",
+                "toggle": {
+                    "rich_text": [{"type": "text", "text": {"content": f"⚠️ Risk Assessment - {report_data.get('risk_level', 'Medium')} Risk"}}],
+                    "children": [
+                        {
+                            "object": "block",
+                            "type": "paragraph",
+                            "paragraph": {
+                                "rich_text": [{"type": "text", "text": {"content": risk_content.strip()}}]
+                            }
+                        }
+                    ]
+                }
+            })
+            
+            # Session Articles (collapsible)
+            if report_data.get('session_articles'):
+                article_list = []
+                for i, article in enumerate(report_data['session_articles'][:10]):
+                    confidence = article.get('confidence', 0)
+                    title = article.get('title', 'Unknown')
+                    article_list.append({
+                        "object": "block",
+                        "type": "bulleted_list_item",
+                        "bulleted_list_item": {
+                            "rich_text": [{"type": "text", "text": {"content": f"{title} (Confidence: {confidence}/10)"}}]
+                        }
+                    })
+                
+                children.append({
+                    "object": "block",
+                    "type": "toggle",
+                    "toggle": {
+                        "rich_text": [{"type": "text", "text": {"content": f"📰 Source Articles ({len(report_data['session_articles'])})"}}],
+                        "children": article_list
+                    }
+                })
+
+            # Assign children blocks to the data dict
+            data["children"] = children
+
+            response = requests.post(
+                "https://api.notion.com/v1/pages",
+                headers=headers,
+                json=data
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                page_url = result.get('url', '')
+                logger.info("✅ Consolidated report logged to Notion with financial details")
+                return page_url
+            else:
+                error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else response.text
+                logger.error(f"Failed to log consolidated report to Notion: {error_data}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error logging consolidated report to Notion: {e}")
+            return False
+    
+    # ... existing code ...
+
 def categorize_etfs_by_sector(etfs):
     """Group ETFs by sector and return primary sector + key ETFs"""
     sector_mapping = {
@@ -973,6 +1275,108 @@ def categorize_etfs_by_sector(etfs):
                 focused_etfs.extend(sector_etfs[:2])  # Top 2 from others
     
     return focused_etfs, primary_sector
+
+def create_consolidated_signal_report(all_analyses, session_timestamp):
+    """Create a single consolidated report from multiple analyses with proper financial terminology"""
+    if not all_analyses:
+        return None
+    
+    # Group analyses by sector and signal strength
+    high_conviction = [a for a in all_analyses if a.get('confidence', 0) >= 8]
+    medium_conviction = [a for a in all_analyses if 6 <= a.get('confidence', 0) < 8]
+    
+    # Aggregate ETF recommendations with current prices
+    etf_positions = {}
+    total_signals = len(all_analyses)
+    
+    for analysis in all_analyses:
+        for etf in analysis.get('affected_etfs', []):
+            if etf not in etf_positions:
+                etf_positions[etf] = {
+                    'signals': [],
+                    'net_score': 0,
+                    'current_price': 0,
+                    'volume': 0
+                }
+            
+            # Score: Bullish=+1, Bearish=-1, Neutral=0, weighted by confidence
+            signal_weight = analysis.get('confidence', 0) / 10
+            if analysis.get('signal') == 'Bullish':
+                etf_positions[etf]['net_score'] += signal_weight
+            elif analysis.get('signal') == 'Bearish':
+                etf_positions[etf]['net_score'] -= signal_weight
+            
+            etf_positions[etf]['signals'].append({
+                'signal': analysis.get('signal'),
+                'confidence': analysis.get('confidence'),
+                'reasoning': analysis.get('reasoning', '')[:100] + '...'
+            })
+            
+            # Get current market data
+            market_data = analysis.get('market_snapshot', {}).get(etf, {})
+            if market_data:
+                etf_positions[etf]['current_price'] = market_data.get('price', 0)
+                etf_positions[etf]['volume'] = market_data.get('volume', 0)
+    
+    # Determine top recommendations (minimum 2 signals, net score > 0.5)
+    strong_buys = []
+    strong_sells = []
+    
+    for etf, data in etf_positions.items():
+        if len(data['signals']) >= 2:  # Multiple confirmations
+            if data['net_score'] >= 1.0:  # Strong bullish consensus
+                strong_buys.append({
+                    'ticker': etf,
+                    'conviction': data['net_score'],
+                    'entry_price': data['current_price'],
+                    'volume': data['volume'],
+                    'signals_count': len(data['signals'])
+                })
+            elif data['net_score'] <= -1.0:  # Strong bearish consensus
+                strong_sells.append({
+                    'ticker': etf,
+                    'conviction': abs(data['net_score']),
+                    'entry_price': data['current_price'],
+                    'volume': data['volume'],
+                    'signals_count': len(data['signals'])
+                })
+    
+    # Sort by conviction
+    strong_buys.sort(key=lambda x: x['conviction'], reverse=True)
+    strong_sells.sort(key=lambda x: x['conviction'], reverse=True)
+    
+    # Generate executive summary
+    primary_sectors = {}
+    for analysis in all_analyses:
+        sector = analysis.get('sector', 'Mixed')
+        if sector not in primary_sectors:
+            primary_sectors[sector] = 0
+        primary_sectors[sector] += analysis.get('confidence', 0)
+    
+    dominant_sector = max(primary_sectors.keys(), key=lambda s: primary_sectors[s]) if primary_sectors else 'Mixed'
+    
+    # Create consolidated report
+    report = {
+        'title': f"MarketMan Signal Report - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        'session_timestamp': session_timestamp,
+        'executive_summary': f"Analyzed {total_signals} market signals. Primary focus: {dominant_sector}. {len(strong_buys)} strong buy recommendations, {len(strong_sells)} strong sell recommendations.",
+        'market_sentiment': 'Bullish' if len([a for a in all_analyses if a.get('signal') == 'Bullish']) > len(all_analyses) / 2 else 'Bearish' if len([a for a in all_analyses if a.get('signal') == 'Bearish']) > len(all_analyses) / 2 else 'Mixed',
+        'conviction_level': 'High' if len(high_conviction) > 0 else 'Medium' if len(medium_conviction) > 0 else 'Low',
+        'strong_buys': strong_buys[:5],  # Top 5
+        'strong_sells': strong_sells[:3],  # Top 3
+        'watchlist': [etf for etf, data in etf_positions.items() if 0.3 <= abs(data['net_score']) < 1.0][:10],
+        'risk_level': 'High' if any(a.get('sector') == 'Volatility' for a in high_conviction) else 'Medium',
+        'session_articles': [
+            {
+                'title': a.get('title', ''),
+                'confidence': a.get('confidence', 0),
+                'link': a.get('source_article', {}).get('link', '')
+            } for a in all_analyses
+        ],
+        'analysis_timestamp': datetime.now().isoformat()
+    }
+    
+    return report
 
 # EXAMPLE USAGE
 if __name__ == "__main__":
@@ -1075,9 +1479,91 @@ def test_tactical_explanation():
     
     return explanation is not None
 
+def test_consolidated_reporting():
+    """Test the consolidated reporting with multiple mock analyses"""
+    print("\n🧪 Testing consolidated signal reporting...")
+    
+    # Mock multiple analyses
+    mock_analyses = [
+        {
+            'signal': 'Bullish',
+            'confidence': 9,
+            'affected_etfs': ['BOTZ', 'ROBO', 'ARKQ'],
+            'reasoning': 'Strong AI sector momentum with institutional inflows',
+            'sector': 'AI',
+            'market_snapshot': {
+                'BOTZ': {'price': 31.42, 'volume': 359773},
+                'ROBO': {'price': 57.93, 'volume': 32891},
+                'ARKQ': {'price': 85.74, 'volume': 103217}
+            },
+            'source_article': {'title': 'AI ETFs See Record Inflows', 'search_term': 'AI ETF'}
+        },
+        {
+            'signal': 'Bullish',
+            'confidence': 8,
+            'affected_etfs': ['ITA', 'XAR', 'DFEN'],
+            'reasoning': 'Defense spending increases drive sector optimism',
+            'sector': 'Defense',
+            'market_snapshot': {
+                'ITA': {'price': 181.76, 'volume': 726277},
+                'XAR': {'price': 200.79, 'volume': 111597},
+                'DFEN': {'price': 46.63, 'volume': 528594}
+            },
+            'source_article': {'title': 'Defense Budget Increases', 'search_term': 'defense ETF'}
+        },
+        {
+            'signal': 'Bearish',
+            'confidence': 7,
+            'affected_etfs': ['XLE'],
+            'reasoning': 'Oil prices under pressure from supply concerns',
+            'sector': 'Energy',
+            'market_snapshot': {
+                'XLE': {'price': 84.80, 'volume': 27289474}
+            },
+            'source_article': {'title': 'Oil Prices Decline', 'search_term': 'energy sector'}
+        }
+    ]
+    
+    # Test consolidated report creation
+    consolidated_report = create_consolidated_signal_report(mock_analyses, datetime.now().isoformat())
+    
+    if consolidated_report:
+        print("✅ Successfully created consolidated report!")
+        print("\n" + "="*60)
+        print("📊 CONSOLIDATED SIGNAL REPORT:")
+        print("="*60)
+        
+        print(f"📋 Executive Summary:")
+        print(f"   {consolidated_report['executive_summary']}")
+        
+        print(f"\n💼 Market Sentiment: {consolidated_report['market_sentiment']}")
+        print(f"⚡ Conviction Level: {consolidated_report['conviction_level']}")
+        
+        if consolidated_report['strong_buys']:
+            print(f"\n🟢 STRONG BUYS ({len(consolidated_report['strong_buys'])}):")
+            for pos in consolidated_report['strong_buys']:
+                print(f"   • {pos['ticker']}: ${pos['entry_price']:.2f} (Conviction: {pos['conviction']:.1f}, {pos['signals_count']} signals)")
+        
+        if consolidated_report['strong_sells']:
+            print(f"\n🔴 STRONG SELLS ({len(consolidated_report['strong_sells'])}):")
+            for pos in consolidated_report['strong_sells']:
+                print(f"   • {pos['ticker']}: ${pos['entry_price']:.2f} (Conviction: {pos['conviction']:.1f}, {pos['signals_count']} signals)")
+        
+        if consolidated_report['watchlist']:
+            print(f"\n👁️ WATCHLIST: {', '.join(consolidated_report['watchlist'])}")
+        
+        print("="*60)
+        return True
+    else:
+        print("❌ Failed to create consolidated report")
+        return False
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and "--test-tactical" in sys.argv:
         success = test_tactical_explanation()
+        sys.exit(0 if success else 1)
+    if len(sys.argv) > 1 and "--test-consolidated" in sys.argv:
+        success = test_consolidated_reporting()
         sys.exit(0 if success else 1)
     # Normal operation
     logger.info("🚀 Starting MarketMan marketMan system...")
