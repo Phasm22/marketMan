@@ -1,14 +1,12 @@
 #!/bin/bash
-"""
-MarketMan Cron Setup Helper
-Easily install and manage MarketMan cron jobs
-"""
+# MarketMan Cron Setup Helper
+# Easily install and manage MarketMan cron jobs
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MARKETMAN_DIR="$(dirname "$SCRIPT_DIR")"
-CRON_FILE="$MARKETMAN_DIR/cron-setup.txt"
+CRON_FILE="$MARKETMAN_DIR/cron-setup-clean.txt"
 TEMP_CRON="/tmp/marketman-cron-$(date +%s)"
 
 echo "🕐 MarketMan Cron Setup Helper"
@@ -26,9 +24,15 @@ install_cron() {
     
     # Check if cron file exists
     if [ ! -f "$CRON_FILE" ]; then
-        echo "❌ Error: cron-setup.txt not found at $CRON_FILE"
-        exit 1
+        echo "❌ Error: cron-setup-clean.txt not found at $CRON_FILE"
+        echo "   Creating default cron configuration..."
+        create_default_cron
     fi
+    
+    # Backup current crontab
+    echo "📦 Backing up current crontab..."
+    mkdir -p "$MARKETMAN_DIR/.backups"
+    crontab -l > "$MARKETMAN_DIR/.backups/crontab-backup-$(date +%Y%m%d-%H%M%S).txt" 2>/dev/null || echo "No existing crontab found"
     
     # Get current crontab (if any)
     crontab -l 2>/dev/null > "$TEMP_CRON" || touch "$TEMP_CRON"
@@ -36,7 +40,7 @@ install_cron() {
     # Remove existing MarketMan entries
     grep -v -E "(marketman|MarketMan)" "$TEMP_CRON" > "${TEMP_CRON}.clean" 2>/dev/null || touch "${TEMP_CRON}.clean"
     
-    # Extract only the actual cron entries from setup file
+    # Add new MarketMan entries (skip comments and empty lines)
     grep -E "^[0-9*]" "$CRON_FILE" >> "${TEMP_CRON}.clean"
     
     # Install new crontab
@@ -48,6 +52,29 @@ install_cron() {
     echo "✅ MarketMan cron jobs installed successfully!"
     echo ""
     show_current
+}
+
+# Function to create default cron configuration
+create_default_cron() {
+    cat > "$CRON_FILE" << 'EOF'
+# MarketMan Automated Trading System - Cron Configuration
+
+# ===== CORE TRADING ANALYSIS =====
+*/15 * * * * cd /root/marketMan && ./bin/marketman run >> /var/log/marketman.log 2>&1
+*/10 * * * * cd /root/marketMan && ./bin/marketman-alerts process >> /var/log/marketman.log 2>&1
+
+# ===== DAILY MAINTENANCE =====
+0 7 * * * cd /root/marketMan && ./bin/marketman monitor --system >> /var/log/marketman.log 2>&1
+0 8 * * * cd /root/marketMan && ./bin/marketman memory --stats >> /var/log/marketman.log 2>&1
+0 9 * * * cd /root/marketMan && ./bin/gmail-organizer auto >> /var/log/marketman.log 2>&1
+0 18 * * * cd /root/marketMan && ./bin/marketman send "MarketMan daily status: $(./bin/marketman-alerts stats | head -n 3 | tail -n 1)" --title "MarketMan Daily Report" >> /var/log/marketman.log 2>&1
+
+# ===== WEEKLY MAINTENANCE =====
+0 6 * * 0 cd /root/marketMan && ./bin/marketman test --all >> /var/log/marketman.log 2>&1
+0 2 * * 0 cd /root/marketMan && ./bin/marketman memory --cleanup 30 >> /var/log/marketman.log 2>&1
+0 3 * * 0 /usr/sbin/logrotate -f /etc/logrotate.d/marketman
+EOF
+    echo "✅ Default cron configuration created"
 }
 
 # Function to remove MarketMan cron jobs
@@ -105,7 +132,7 @@ test_setup() {
     
     echo ""
     echo "Testing refactored analyzer..."
-    if python -m src.core.news_analyzer_refactored test >/dev/null 2>&1; then
+    if ./bin/marketman run --test >/dev/null 2>&1; then
         echo "✅ Refactored analyzer working"
     else
         echo "❌ Refactored analyzer test failed"

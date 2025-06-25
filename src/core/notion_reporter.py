@@ -129,7 +129,7 @@ class NotionReporter:
             
             # Create more descriptive position recommendations
             position_recommendations = self._build_position_recommendations(strong_buys, strong_sells, watchlist)
-            position_text = '\\n'.join(position_recommendations)
+            position_text = '\n'.join(position_recommendations)
             logger.info(f"📋 Enhanced position recommendations prepared")
 
             # Get first article link for the Link field
@@ -211,28 +211,56 @@ class NotionReporter:
             return False
     
     def _build_position_recommendations(self, strong_buys, strong_sells, watchlist):
-        """Build position recommendations text"""
+        """Build position recommendations with tiered conviction system using centralized config"""
+        # Import the conviction tier function
+        from .report_consolidator import get_conviction_tier, safe_get_position_data
+        
         position_recommendations = []
         
         if strong_buys:
-            position_recommendations.append(f"🎯 HIGH CONVICTION BUYS:")
+            # Determine conviction tier based on actual scores using centralized function
+            max_conviction = max([pos.get('conviction', 0) for pos in strong_buys])
+            tier_config = get_conviction_tier(max_conviction)
+            
+            position_recommendations.append(f"{tier_config['emoji']} {tier_config['label']} BUYS:")
             for pos in strong_buys[:3]:  # Top 3
-                position_recommendations.append(f"• {pos['ticker']}: Target entry ${pos['entry_price']:.2f} | Conviction {pos['conviction']:.1f}/10 | Volume {pos['volume']:,}")
-                position_recommendations.append(f"  Strategy: 2-5% position size, stop-loss at -8%, target +15-20%")
+                safe_pos = safe_get_position_data(pos)
+                position_recommendations.append(f"• {safe_pos['ticker']}: Entry ${safe_pos['entry_price']:.2f} | Score {safe_pos['conviction']:.1f}/10 | Vol {safe_pos['volume']:,}")
+                position_recommendations.append(f"  Size: {tier_config['size']}, Stop: {tier_config['stop']}, Target: {tier_config['target']}")
         
         if strong_sells:
-            position_recommendations.append(f"🔻 TACTICAL SELLS:")
+            # Enhanced tactical sell recommendations with macro context
+            max_sell_conviction = max([pos.get('conviction', 0) for pos in strong_sells])
+            sell_tier_config = get_conviction_tier(max_sell_conviction)
+            
+            if max_sell_conviction >= 2.0:
+                tier = "🔻 HIGH CONVICTION SELLS"
+                narrative = "Strong bearish signals warrant defensive positioning"
+            elif max_sell_conviction >= 1.5:
+                tier = "⚠️ TACTICAL SELLS" 
+                narrative = "Moderate bearish pressure suggests hedging"
+            else:
+                tier = "👀 WATCH FOR WEAKNESS"
+                narrative = "Early warning signals for potential downside"
+                
+            position_recommendations.append(f"{tier}:")
+            position_recommendations.append(f"{narrative}")
+            
             for pos in strong_sells[:2]:  # Top 2
-                position_recommendations.append(f"• {pos['ticker']}: Entry ${pos['entry_price']:.2f} | Conviction {pos['conviction']:.1f}/10")
-                position_recommendations.append(f"  Strategy: Consider inverse exposure or defensive hedging")
+                safe_pos = safe_get_position_data(pos)
+                # Get inverse ticker recommendations
+                inverse_ticker = self._get_inverse_ticker(safe_pos['ticker'])
+                position_recommendations.append(f"• {safe_pos['ticker']}: Entry ${safe_pos['entry_price']:.2f} | Score {safe_pos['conviction']:.1f}/10")
+                position_recommendations.append(f"  Hedge: {inverse_ticker} | Size: 1-3% inverse exposure")
+                position_recommendations.append(f"  Context: Technical breakdown + macro headwinds")
         
         if not strong_buys and not strong_sells:
-            position_recommendations.append("📊 HOLD STRATEGY:")
-            position_recommendations.append("Market signals show promise but lack strong confirmation.")
-            position_recommendations.append("• Monitoring key ETFs for volume breakouts and trend confirmation")
+            position_recommendations.append("📊 MARKET HOLD:")
+            position_recommendations.append("Signals lack conviction threshold (>1.5/10) for position sizing.")
+            position_recommendations.append("• Monitoring for volume confirmation and momentum shifts")
             if watchlist:
-                position_recommendations.append(f"• Watchlist tracking: {', '.join(watchlist[:3])}")
-            position_recommendations.append("• Waiting for clearer directional signals before major allocation")
+                position_recommendations.append(f"• Watchlist: {', '.join(watchlist[:3])} - awaiting breakouts")
+            position_recommendations.append("• Cash position maintained for clearer opportunities")
         
         return position_recommendations
     
@@ -322,12 +350,22 @@ class NotionReporter:
             }
         })
         
-        # Add execution strategy for strong buys
+        # Add enhanced execution strategy for strong buys using centralized config
         if strong_buys:
-            trading_notes = "📈 EXECUTION STRATEGY:\\n"
-            for pos in strong_buys[:2]:
-                trading_notes += f"• {pos['ticker']}: 2-5% position size, stop-loss at -8%, profit target +15-20%\\n"
-                trading_notes += f"  Current price: ${pos['entry_price']:.2f} | Volume: {pos['volume']:,}\\n"
+            from .report_consolidator import get_conviction_tier, safe_get_position_data
+            
+            max_conviction = max([pos.get('conviction', 0) for pos in strong_buys])
+            tier_config = get_conviction_tier(max_conviction)
+            
+            trading_notes = f"📈 EXECUTION PLAYBOOK ({tier_config['urgency']}):\n"
+            trading_notes += f"Timeframe: {tier_config['timeframe']} | Risk Level: {tier_config['tier']} conviction signals\n\n"
+            
+            for i, pos in enumerate(strong_buys[:2], 1):
+                safe_pos = safe_get_position_data(pos)
+                trading_notes += f"{i}. {safe_pos['ticker']} @ ${safe_pos['entry_price']:.2f}\n"
+                trading_notes += f"   • Score: {safe_pos['conviction']:.1f}/10 | Volume: {safe_pos['volume']:,}\n"
+                trading_notes += f"   • Entry: Limit order -1% below current\n"
+                trading_notes += f"   • Stop: {tier_config['stop']} | Target: {tier_config['target']}\n\n"
             
             blocks.append({
                 "object": "block",
@@ -338,13 +376,39 @@ class NotionReporter:
                 }
             })
         
+        # Add macro context for sells
+        if strong_sells:
+            sell_context = "🔻 MARKET HEADWINDS:\n"
+            sell_context += "Technical breakdown coincides with macro uncertainty.\n\n"
+            
+            for pos in strong_sells[:2]:
+                inverse_ticker = self._get_inverse_ticker(pos['ticker'])
+                sell_context += f"• {pos['ticker']}: Bearish divergence detected\n"
+                sell_context += f"  Hedge via {inverse_ticker} (1-3% allocation)\n"
+                sell_context += f"  Context: Volume selling + momentum breakdown\n\n"
+            
+            sell_context += "Risk-off positioning recommended until trend clarity emerges."
+            
+            blocks.append({
+                "object": "block",
+                "type": "callout", 
+                "callout": {
+                    "rich_text": [{"type": "text", "text": {"content": sell_context}}],
+                    "icon": {"emoji": "⚠️"}
+                }
+            })
+        
         # Add HOLD strategy explanation if no strong positions
         if not strong_buys and not strong_sells:
-            hold_strategy = """📊 HOLD REASONING:
-Market signals show potential but lack strong conviction thresholds.
-• Monitoring for volume confirmation and breakout patterns
-• Current watchlist positioning allows for quick deployment
-• Awaiting clearer directional momentum before major allocation"""
+            hold_strategy = """📊 PATIENCE STRATEGY:
+Current signals below action threshold (1.5/10 conviction).
+
+• Market lacks clear directional momentum
+• Monitoring for volume breakouts and trend confirmation  
+• Cash position preserved for higher-probability setups
+• Watchlist tracking key technical levels for deployment
+
+Strategy: Wait for 2.0+ conviction scores before sizing positions."""
             
             blocks.append({
                 "object": "block",
@@ -422,3 +486,32 @@ Market signals show potential but lack strong conviction thresholds.
                 "children": article_list
             }
         }
+    
+    def _get_inverse_ticker(self, ticker):
+        """Get inverse/hedging ticker recommendation for a given ETF"""
+        inverse_map = {
+            'XLF': 'FAZ',      # Financial bear 3x
+            'XLE': 'DRV',      # Energy bear 3x  
+            'QQQ': 'SQQQ',     # NASDAQ bear 3x
+            'SPY': 'SPXS',     # S&P 500 bear 3x
+            'IWM': 'RWM',      # Russell 2000 bear
+            'XLK': 'PSQ',      # Technology bear
+            'XLI': 'SIJ',      # Industrial bear
+            'XLU': 'SDP',      # Utilities bear
+            'XLV': 'RXD',      # Healthcare bear
+            'VXX': 'XIV',      # Volatility inverse
+            'GDX': 'DUST',     # Gold miners bear 2x
+            'TLT': 'TBF',      # Treasury bear
+            'EFA': 'EFZ',      # EAFE bear
+            'EEM': 'EUM',      # Emerging markets bear
+        }
+        
+        # Default recommendations by sector
+        if ticker.startswith('URA') or 'uranium' in ticker.lower():
+            return 'Put spreads'  # No direct uranium inverse
+        elif 'AI' in ticker or 'tech' in ticker.lower():
+            return 'PSQ/SQQQ'
+        elif 'clean' in ticker.lower() or 'energy' in ticker.lower():
+            return 'DRV/SCO'
+        else:
+            return inverse_map.get(ticker, 'SPXS/VXX')  # Default to broad market hedge

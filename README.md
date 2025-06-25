@@ -487,6 +487,14 @@ marketMan/
 
 ##  Recent Updates
 
+### ✅ Conviction System Overhaul (June 2025)
+- **Fixed Misleading Labels**: No more "HIGH CONVICTION BUYS" with 1.5/10 scores
+- **Tiered System**: TACTICAL (< 1.5) → MEDIUM (1.5-2.5) → HIGH CONVICTION (2.5+)
+- **Dynamic Position Sizing**: 1-2% tactical → 2-3% medium → 3-5% high conviction
+- **Enhanced Narratives**: Macro context and specific inverse tickers for tactical sells
+- **Trader Dashboard Style**: Quick signals with execution timeframes and urgency levels
+- **Inverse Ticker Mapping**: Specific hedge recommendations (FAZ for XLF, SQQQ for QQQ, etc.)
+
 ### ✅ Architecture Refactoring (June 2025)
 - **Modular Design**: Broke down 1,630-line monolithic file into 6 focused modules
 - **Enhanced Maintainability**: 87% reduction in individual file complexity

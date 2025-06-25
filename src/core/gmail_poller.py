@@ -125,7 +125,7 @@ class GmailPoller:
         
         # Updated regex patterns for current Google Alert structure
         # Look for article titles in the itemprop="name" spans
-        title_link_pattern = r'<a href="([^"]*)" itemprop="url"[^>]*>\\s*<span itemprop="name"[^>]*>(.*?)</span>'
+        title_link_pattern = r'<a href="([^"]*)" itemprop="url"[^>]*>.*?<span itemprop="name"[^>]*>(.*?)</span>'
         description_pattern = r'<div itemprop="description"[^>]*>(.*?)</div>'
         
         # Find title links and descriptions
