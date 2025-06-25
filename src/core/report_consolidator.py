@@ -91,7 +91,7 @@ def create_consolidated_signal_report(all_analyses, session_timestamp):
     else:
         overall_conviction = 'Low'
     
-    # Aggregate ETF recommendations with current prices
+    # Aggregate ETF recommendations with frequency + confidence scoring
     etf_positions = {}
     total_signals = len(all_analyses)
     
@@ -102,8 +102,14 @@ def create_consolidated_signal_report(all_analyses, session_timestamp):
                     'signals': [],
                     'net_score': 0,
                     'current_price': 0,
-                    'volume': 0
+                    'volume': 0,
+                    'mention_count': 0,
+                    'cumulative_confidence': 0
                 }
+            
+            # Track frequency and cumulative confidence
+            etf_positions[etf]['mention_count'] += 1
+            etf_positions[etf]['cumulative_confidence'] += analysis.get('confidence', 0)
             
             # Score: Bullish=+1, Bearish=-1, Neutral=0, weighted by confidence
             # Use confidence as-is (1-10 scale), not as percentage
@@ -135,15 +141,20 @@ def create_consolidated_signal_report(all_analyses, session_timestamp):
         signal_count = len(data.get('signals', []))
         net_score = data.get('net_score', 0.0)
         
-        # Strong positions require higher thresholds  
-        if signal_count >= 2:  # Multiple confirmations
+        # Strong positions now require both frequency AND confidence thresholds
+        if signal_count >= 2:  # Multiple confirmations required
+            frequency_bonus = min(data.get('mention_count', 0) / 2, 1.0)  # Up to 100% bonus for frequency
+            adjusted_score = net_score * (1 + frequency_bonus)
+            
             # Use safe data extraction with defaults
             position_data = {
                 'ticker': etf,
-                'conviction': net_score,
+                'conviction': adjusted_score,  # Now includes frequency bonus
                 'entry_price': data.get('current_price', 0.0),
                 'volume': data.get('volume', 0),
-                'signals_count': signal_count
+                'signals_count': signal_count,
+                'mention_count': data.get('mention_count', 0),
+                'cumulative_confidence': data.get('cumulative_confidence', 0)
             }
             
             if net_score >= 0.8:  # Adjusted threshold for new scoring

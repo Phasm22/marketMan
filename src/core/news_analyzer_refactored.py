@@ -40,6 +40,77 @@ CURRENT_BATCH_STRATEGY = BATCH_STRATEGY_MAP.get(ALERT_STRATEGY, BatchStrategy.SM
 # Initialize MarketMemory for contextual tracking
 memory = MarketMemory()
 
+def filter_high_conviction_etfs(session_analyses, min_mentions=2):
+    """Filter ETFs that appear in multiple analyses and rank by cumulative confidence"""
+    etf_scores = {}
+    
+    # Calculate cumulative scores for each ETF
+    for analysis in session_analyses:
+        confidence = analysis.get('confidence', 0)
+        for etf in analysis.get('affected_etfs', []):
+            if etf not in etf_scores:
+                etf_scores[etf] = {
+                    'mentions': 0, 
+                    'cumulative_confidence': 0, 
+                    'analyses': [],
+                    'avg_confidence': 0
+                }
+            
+            etf_scores[etf]['mentions'] += 1
+            etf_scores[etf]['cumulative_confidence'] += confidence
+            etf_scores[etf]['analyses'].append(analysis)
+    
+    # Calculate average confidence for each ETF
+    for etf, data in etf_scores.items():
+        data['avg_confidence'] = data['cumulative_confidence'] / data['mentions']
+    
+    # Filter ETFs with minimum mentions and exclude broad-tech unless no alternatives
+    qualified_etfs = {}
+    broad_tech_etfs = {'XLK', 'QQQ', 'VGT', 'FTEC', 'IYW', 'VTI', 'SPY'}
+    
+    # First pass: Include specialized ETFs with sufficient mentions
+    for etf, data in etf_scores.items():
+        if data['mentions'] >= min_mentions and etf not in broad_tech_etfs:
+            qualified_etfs[etf] = data
+    
+    # Second pass: Include broad-tech only if no specialized alternatives qualify
+    if not qualified_etfs:
+        logger.info("⚠️ No specialized ETFs qualify, falling back to broad-market funds")
+        for etf, data in etf_scores.items():
+            if data['mentions'] >= min_mentions and etf in broad_tech_etfs:
+                qualified_etfs[etf] = data
+    
+    # Sort by cumulative confidence (highest first)
+    sorted_etfs = sorted(qualified_etfs.items(), 
+                        key=lambda x: x[1]['cumulative_confidence'], 
+                        reverse=True)
+    
+    logger.info(f"🎯 Filtered to {len(sorted_etfs)} high-conviction ETFs from {len(etf_scores)} total")
+    return sorted_etfs[:3]  # Return top 3 only
+
+def check_technical_support(etf, market_data, support_threshold=0.03):
+    """Check if ETF price is not overextended (>3% above support)"""
+    price_data = market_data.get(etf, {})
+    current_price = price_data.get('price', 0)
+    
+    if current_price == 0:
+        return False, 0  # No price data available
+    
+    # Simple support estimation using daily change as volatility proxy
+    daily_change = price_data.get('change_percent', 0) / 100
+    
+    # Estimate support as recent low (conservative approach)
+    # Using 2x daily volatility as support distance proxy
+    estimated_support = current_price * (1 - abs(daily_change) * 2)
+    
+    support_gap = (current_price - estimated_support) / estimated_support if estimated_support > 0 else 0
+    
+    is_acceptable = support_gap < support_threshold
+    
+    logger.debug(f"📊 {etf}: Price ${current_price:.2f}, Support gap {support_gap:.1%}, Acceptable: {is_acceptable}")
+    
+    return is_acceptable, support_gap
+
 class NewsAnalyzer:
     def __init__(self):
         self.gmail_poller = GmailPoller()
@@ -120,31 +191,74 @@ class NewsAnalyzer:
         if session_analyses:
             logger.info(f"📊 Creating consolidated report from {len(session_analyses)} analyses...")
             
+            # Filter for high-conviction ETFs before creating consolidated report
+            high_conviction_etfs = filter_high_conviction_etfs(session_analyses, min_mentions=2)
+            
+            if high_conviction_etfs:
+                logger.info(f"🎯 High-conviction ETFs identified:")
+                for etf, data in high_conviction_etfs:
+                    logger.info(f"   • {etf}: {data['mentions']} mentions, {data['cumulative_confidence']:.1f} total confidence, {data['avg_confidence']:.1f} avg")
+                
+                # Update session analyses to focus only on high-conviction ETFs
+                filtered_etf_set = {etf for etf, _ in high_conviction_etfs}
+                for analysis in session_analyses:
+                    # Filter affected_etfs to only include high-conviction ones
+                    original_etfs = analysis.get('affected_etfs', [])
+                    filtered_etfs = [etf for etf in original_etfs if etf in filtered_etf_set]
+                    analysis['affected_etfs'] = filtered_etfs
+                    analysis['high_conviction_etfs'] = filtered_etfs
+            else:
+                logger.info("⚠️ No ETFs meet high-conviction criteria (≥2 mentions)")
+            
             consolidated_report = create_consolidated_signal_report(session_analyses, session_timestamp)
             
             if consolidated_report:
                 # Log consolidated report to Notion
                 notion_url = self.notion_reporter.log_consolidated_report_to_notion(consolidated_report)
                 
-                # Queue high-conviction signals for alerts
+                # Apply technical filter to high-conviction signals before queuing
                 high_conviction_signals = [a for a in session_analyses if a.get('confidence', 0) >= 8]
                 
                 if high_conviction_signals:
-                    logger.info(f"📋 Queueing {len(high_conviction_signals)} high-conviction signals...")
+                    logger.info(f"📋 Filtering {len(high_conviction_signals)} high-conviction signals for technical criteria...")
+                    
+                    technically_sound_signals = []
                     
                     for analysis in high_conviction_signals:
-                        alert_id = queue_alert(
-                            signal=analysis.get('signal', 'Neutral'),
-                            confidence=analysis.get('confidence', 0),
-                            title=f"High Conviction: {analysis.get('primary_sector', 'Mixed')} Signal",
-                            reasoning=analysis.get('reasoning', ''),
-                            etfs=analysis.get('focused_etfs', []),
-                            sector=analysis.get('primary_sector', 'Mixed'),
-                            article_url=notion_url,
-                            search_term="consolidated_report",
-                            strategy=CURRENT_BATCH_STRATEGY
-                        )
-                        logger.info(f"✅ Alert queued: {alert_id[:8]}")
+                        analysis_etfs = analysis.get('high_conviction_etfs', analysis.get('affected_etfs', []))
+                        qualified_etfs = []
+                        
+                        for etf in analysis_etfs:
+                            is_acceptable, support_gap = check_technical_support(etf, market_snapshot)
+                            if is_acceptable:
+                                qualified_etfs.append(etf)
+                                logger.info(f"✅ {etf}: Passes technical filter (support gap: {support_gap:.1%})")
+                            else:
+                                logger.info(f"❌ {etf}: Rejected - overextended (support gap: {support_gap:.1%})")
+                        
+                        if qualified_etfs:
+                            # Update analysis with only technically sound ETFs
+                            analysis['filtered_etfs'] = qualified_etfs
+                            technically_sound_signals.append(analysis)
+                    
+                    if technically_sound_signals:
+                        logger.info(f"🎯 Queueing {len(technically_sound_signals)} technically sound signals...")
+                        
+                        for analysis in technically_sound_signals:
+                            alert_id = queue_alert(
+                                signal=analysis.get('signal', 'Neutral'),
+                                confidence=analysis.get('confidence', 0),
+                                title=f"High Conviction: {analysis.get('primary_sector', 'Mixed')} Signal",
+                                reasoning=analysis.get('reasoning', ''),
+                                etfs=analysis.get('filtered_etfs', []),
+                                sector=analysis.get('primary_sector', 'Mixed'),
+                                article_url=notion_url,
+                                search_term="filtered_high_conviction",
+                                strategy=CURRENT_BATCH_STRATEGY
+                            )
+                            logger.info(f"✅ Alert queued: {alert_id[:8]}")
+                    else:
+                        logger.info("📉 No signals pass technical filtering criteria")
                 else:
                     logger.info("⏭️ No high-conviction signals to queue")
         
@@ -263,6 +377,84 @@ def test_consolidated_reporting():
         print("❌ Failed to create consolidated report")
         return False
 
+def test_etf_filtering():
+    """Test the new ETF filtering and ranking system"""
+    print("\\n🧪 Testing enhanced ETF filtering system...")
+    
+    # Mock analyses that demonstrate the filtering logic
+    mock_analyses = [
+        {
+            'confidence': 8,
+            'signal': 'Bullish',
+            'affected_etfs': ['BOTZ', 'XLK'],  # BOTZ is specialized, XLK is broad
+            'sector': 'AI'
+        },
+        {
+            'confidence': 7,
+            'signal': 'Bullish',
+            'affected_etfs': ['BOTZ', 'ROBO'],  # BOTZ mentioned again (frequency)
+            'sector': 'AI'
+        },
+        {
+            'confidence': 6,
+            'signal': 'Bullish',
+            'affected_etfs': ['BOTZ'],  # BOTZ mentioned third time
+            'sector': 'AI'
+        },
+        {
+            'confidence': 8,
+            'signal': 'Bullish',
+            'affected_etfs': ['XLK'],  # XLK mentioned second time but still broad
+            'sector': 'Technology'
+        }
+    ]
+    
+    # Test filtering
+    filtered_etfs = filter_high_conviction_etfs(mock_analyses, min_mentions=2)
+    
+    print(f"\\n📊 ETF Filtering Results:")
+    print(f"   Input: 4 analyses mentioning BOTZ(3x), XLK(2x), ROBO(1x)")
+    print(f"   Filtered: {len(filtered_etfs)} ETFs")
+    
+    for etf, data in filtered_etfs:
+        print(f"   • {etf}: {data['mentions']} mentions, {data['cumulative_confidence']:.1f} total confidence")
+    
+    # Should prioritize BOTZ (specialized, 3 mentions, 21 total confidence) over XLK (broad, 2 mentions, 14 total confidence)
+    if filtered_etfs and filtered_etfs[0][0] == 'BOTZ':
+        print("   ✅ Correctly prioritized specialized ETF (BOTZ) over broad ETF (XLK)")
+        return True
+    else:
+        print("   ❌ Failed to prioritize specialized ETF")
+        return False
+
+def test_technical_filtering():
+    """Test technical support filtering"""
+    print("\\n🧪 Testing technical support filtering...")
+    
+    # Mock market data with different support scenarios
+    mock_market_data = {
+        'GOOD_ETF': {'price': 100.0, 'change_percent': 1.0},   # 2% support gap - acceptable
+        'BAD_ETF': {'price': 100.0, 'change_percent': 5.0},    # 10% support gap - overextended  
+        'NO_DATA': {}  # No price data
+    }
+    
+    test_results = []
+    for etf, data in mock_market_data.items():
+        acceptable, gap = check_technical_support(etf, {etf: data})
+        test_results.append((etf, acceptable, gap))
+        print(f"   • {etf}: Support gap {gap:.1%}, Acceptable: {acceptable}")
+    
+    # Should accept GOOD_ETF, reject BAD_ETF and NO_DATA
+    expected = [('GOOD_ETF', True), ('BAD_ETF', False), ('NO_DATA', False)]
+    actual = [(etf, acceptable) for etf, acceptable, _ in test_results]
+    
+    if all(exp in actual for exp in expected):
+        print("   ✅ Technical filtering working correctly")
+        return True
+    else:
+        print("   ❌ Technical filtering failed")
+        return False
+
 # MAIN EXECUTION
 if __name__ == "__main__":
     import json
@@ -300,6 +492,29 @@ if __name__ == "__main__":
     
     elif "--test-consolidated" in sys.argv:
         success = test_consolidated_reporting()
+        sys.exit(0 if success else 1)
+    
+    elif "--test-filtering" in sys.argv:
+        success1 = test_etf_filtering()
+        success2 = test_technical_filtering()
+        print("\\n" + "="*60)
+        print("📊 ENHANCED ETF FILTERING SUMMARY:")
+        print("="*60)
+        print("✅ IMPLEMENTED IMPROVEMENTS:")
+        print("   • ETFs must appear in ≥2 analyses to qualify")
+        print("   • Specialized ETFs prioritized over broad-market (XLK, QQQ, etc)")
+        print("   • Ranking by cumulative confidence (frequency × confidence)")
+        print("   • Technical filter rejects overextended positions (>3% above support)")
+        print("   • Only top 3 ETFs included in final recommendations")
+        print("="*60)
+        sys.exit(0 if success1 and success2 else 1)
+    
+    elif "--test-etf-filtering" in sys.argv:
+        success = test_etf_filtering()
+        sys.exit(0 if success else 1)
+    
+    elif "--test-technical-filtering" in sys.argv:
+        success = test_technical_filtering()
         sys.exit(0 if success else 1)
     
     else:
