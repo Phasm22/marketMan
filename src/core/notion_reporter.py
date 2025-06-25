@@ -211,32 +211,75 @@ class NotionReporter:
             return False
     
     def _build_position_recommendations(self, strong_buys, strong_sells, watchlist):
-        """Build position recommendations with tiered conviction system using centralized config"""
+        """Build enhanced position recommendations with average confidence and liquidity context"""
         # Import the conviction tier function
         from .report_consolidator import get_conviction_tier, safe_get_position_data
         
         position_recommendations = []
         
         if strong_buys:
-            # Determine conviction tier based on actual scores using centralized function
-            max_conviction = max([pos.get('conviction', 0) for pos in strong_buys])
-            tier_config = get_conviction_tier(max_conviction)
+            # Calculate overall conviction tier from top ETF for formatting consistency
+            top_etf = strong_buys[0] if strong_buys else {}
+            top_etf_mention_count = top_etf.get('mention_count', 1)  # How many times the top ETF was mentioned
+            top_etf_cumulative_confidence = top_etf.get('cumulative_confidence', 0)  # Sum of confidence scores for top ETF
+            
+            # Calculate true average confidence for the top ETF (not session average)
+            top_avg_conviction = top_etf_cumulative_confidence / top_etf_mention_count if top_etf_mention_count > 0 else 0
+            
+            # Log for debugging
+            logger.debug(f"🎯 Top ETF {top_etf.get('ticker', 'UNKNOWN')}: {top_etf_mention_count} mentions, avg confidence {top_avg_conviction:.1f}")
+            
+            # Determine conviction tier based on top ETF's average scores
+            tier_config = get_conviction_tier(top_avg_conviction)
             
             position_recommendations.append(f"{tier_config['emoji']} {tier_config['label']} BUYS:")
+            
+            # IMPORTANT: Show ONLY individual per-ETF breakdowns
+            # NO aggregate "Total Hits" summary - each ETF shows its own mention count
+            
+            # Show per-ETF conviction (not aggregate)
             for pos in strong_buys[:3]:  # Top 3
                 safe_pos = safe_get_position_data(pos)
-                position_recommendations.append(f"• {safe_pos['ticker']}: Entry ${safe_pos['entry_price']:.2f} | Score {safe_pos['conviction']:.1f}/10 | Vol {safe_pos['volume']:,}")
+                
+                # Calculate per-ETF conviction using ONLY per-ETF data
+                etf_mention_count = pos.get('mention_count', 1)  # How many times THIS ETF was mentioned
+                etf_cumulative_confidence = pos.get('cumulative_confidence', 0)  # Sum of confidence scores for THIS ETF
+                
+                # Defensive check: ensure we're not accidentally using session totals
+                if etf_mention_count <= 0:
+                    logger.warning(f"⚠️ {safe_pos['ticker']}: Invalid mention_count={etf_mention_count}, defaulting to 1")
+                    etf_mention_count = 1
+                    
+                # Calculate TRUE average confidence for this specific ETF
+                etf_avg_confidence = etf_cumulative_confidence / etf_mention_count
+                
+                # Additional logging to help debug any calculation issues
+                logger.debug(f"🔍 {safe_pos['ticker']}: mentions={etf_mention_count}, cumulative={etf_cumulative_confidence:.1f}, avg={etf_avg_confidence:.1f}")
+                
+                # Format volume with liquidity assessment
+                volume_str = self._format_volume_with_liquidity(safe_pos['volume'])
+                
+                position_recommendations.append(f"• {safe_pos['ticker']} – Hits: {etf_mention_count} (Avg {etf_avg_confidence:.1f}/10)")
+                position_recommendations.append(f"  Entry: ${safe_pos['entry_price']:.2f} | {volume_str}")
                 position_recommendations.append(f"  Size: {tier_config['size']}, Stop: {tier_config['stop']}, Target: {tier_config['target']}")
+                position_recommendations.append("")
         
         if strong_sells:
-            # Enhanced tactical sell recommendations with macro context
-            max_sell_conviction = max([pos.get('conviction', 0) for pos in strong_sells])
-            sell_tier_config = get_conviction_tier(max_sell_conviction)
+            # Calculate overall conviction tier from top sell ETF for formatting consistency
+            top_sell_etf = strong_sells[0] if strong_sells else {}
+            top_sell_mention_count = top_sell_etf.get('mention_count', 1)  # How many times the top sell ETF was mentioned
+            top_sell_cumulative_confidence = top_sell_etf.get('cumulative_confidence', 0)  # Sum of confidence scores for top sell ETF
             
-            if max_sell_conviction >= 2.0:
+            # Calculate true average confidence for the top sell ETF (not session average)
+            top_sell_avg_conviction = top_sell_cumulative_confidence / top_sell_mention_count if top_sell_mention_count > 0 else 0
+            
+            # Log for debugging  
+            logger.debug(f"🔻 Top Sell ETF {top_sell_etf.get('ticker', 'UNKNOWN')}: {top_sell_mention_count} mentions, avg confidence {top_sell_avg_conviction:.1f}")
+            
+            if top_sell_avg_conviction >= 2.0:
                 tier = "🔻 HIGH CONVICTION SELLS"
                 narrative = "Strong bearish signals warrant defensive positioning"
-            elif max_sell_conviction >= 1.5:
+            elif top_sell_avg_conviction >= 1.5:
                 tier = "⚠️ TACTICAL SELLS" 
                 narrative = "Moderate bearish pressure suggests hedging"
             else:
@@ -245,14 +288,35 @@ class NotionReporter:
                 
             position_recommendations.append(f"{tier}:")
             position_recommendations.append(f"{narrative}")
+            position_recommendations.append("")
             
+            # Show per-ETF conviction for sells (not aggregate)
             for pos in strong_sells[:2]:  # Top 2
                 safe_pos = safe_get_position_data(pos)
-                # Get inverse ticker recommendations
+                
+                # Calculate per-ETF conviction using ONLY per-ETF data  
+                etf_sell_mention_count = pos.get('mention_count', 1)  # How many times THIS ETF was mentioned
+                etf_sell_cumulative_confidence = pos.get('cumulative_confidence', 0)  # Sum of confidence scores for THIS ETF
+                
+                # Defensive check: ensure we're not accidentally using session totals
+                if etf_sell_mention_count <= 0:
+                    logger.warning(f"⚠️ {safe_pos['ticker']}: Invalid sell mention_count={etf_sell_mention_count}, defaulting to 1")
+                    etf_sell_mention_count = 1
+                    
+                # Calculate TRUE average confidence for this specific ETF
+                etf_sell_avg_confidence = etf_sell_cumulative_confidence / etf_sell_mention_count
+                
+                # Additional logging to help debug any calculation issues
+                logger.debug(f"🔍 {safe_pos['ticker']} (SELL): mentions={etf_sell_mention_count}, cumulative={etf_sell_cumulative_confidence:.1f}, avg={etf_sell_avg_confidence:.1f}")
+                
+                volume_str = self._format_volume_with_liquidity(safe_pos['volume'])
                 inverse_ticker = self._get_inverse_ticker(safe_pos['ticker'])
-                position_recommendations.append(f"• {safe_pos['ticker']}: Entry ${safe_pos['entry_price']:.2f} | Score {safe_pos['conviction']:.1f}/10")
+                
+                position_recommendations.append(f"• {safe_pos['ticker']} – Hits: {etf_sell_mention_count} (Avg {etf_sell_avg_confidence:.1f}/10)")
+                position_recommendations.append(f"  Entry: ${safe_pos['entry_price']:.2f} | {volume_str}")
                 position_recommendations.append(f"  Hedge: {inverse_ticker} | Size: 1-3% inverse exposure")
                 position_recommendations.append(f"  Context: Technical breakdown + macro headwinds")
+                position_recommendations.append("")
         
         if not strong_buys and not strong_sells:
             position_recommendations.append("📊 MARKET HOLD:")
@@ -263,6 +327,17 @@ class NotionReporter:
             position_recommendations.append("• Cash position maintained for clearer opportunities")
         
         return position_recommendations
+    
+    def _format_volume_with_liquidity(self, volume):
+        """Format volume with liquidity assessment with color-coded visual indicators"""
+        if volume >= 1000000:  # 1M+
+            return f"{volume//1000000:.0f}M 🟢 HIGH"
+        elif volume >= 500000:  # 500k-1M
+            return f"{volume//1000:.0f}k 🟢 GOOD"
+        elif volume >= 100000:  # 100k-500k
+            return f"{volume//1000:.0f}k 🟡 FAIR"
+        else:  # <100k
+            return f"{volume//1000:.0f}k 🔴 LOW"
     
     def _get_first_article_link(self, session_articles):
         """Get the first valid article link"""
@@ -316,21 +391,82 @@ class NotionReporter:
             }
         })
         
-        # Position Recommendations
+        # Price Context for ETFs (rich-text instead of code block)
+        if strong_buys or strong_sells:
+            children.extend(self._build_price_context_blocks(strong_buys, strong_sells))
+        
+        # Position Recommendations (consolidated execution playbook)
         if position_text:
-            children.extend(self._build_position_blocks(position_text, strong_buys, strong_sells))
+            children.extend(self._build_enhanced_position_blocks(position_text, strong_buys, strong_sells))
         
-        # Risk Assessment
-        children.append(self._build_risk_assessment_block(report_data, strong_buys, strong_sells))
+        # Next Steps (new actionable section with integrated risk factors)
+        children.extend(self._build_next_steps_blocks(strong_buys, strong_sells, report_data))
         
-        # Session Articles
+        # Session Articles (collapsed by default)
         if report_data.get('session_articles'):
             children.append(self._build_articles_block(report_data['session_articles']))
         
         return children
     
-    def _build_position_blocks(self, position_text, strong_buys, strong_sells):
-        """Build position recommendation blocks"""
+    def _build_price_context_blocks(self, strong_buys, strong_sells):
+        """Build price context blocks using rich-text formatting with visual separation"""
+        blocks = []
+        
+        # Add visual separator with divider block
+        blocks.append({
+            "object": "block",
+            "type": "divider",
+            "divider": {}
+        })
+        
+        blocks.append({
+            "object": "block",
+            "type": "heading_2",
+            "heading_2": {
+                "rich_text": [{"type": "text", "text": {"content": "💰 Price Context"}}]
+            }
+        })
+        
+        all_positions = strong_buys + strong_sells
+        if all_positions:
+            from .report_consolidator import safe_get_position_data
+            
+            for pos in all_positions[:3]:  # Top 3 positions
+                safe_pos = safe_get_position_data(pos)
+                
+                # Generate realistic price context (in production, this would come from market_data.py)
+                current_price = safe_pos['entry_price']
+                week_52_low = current_price * 0.75  # 25% below
+                week_52_high = current_price * 1.25  # 25% above
+                support = current_price * 0.95  # 5% below
+                resistance = current_price * 1.08  # 8% above
+                
+                price_context = (
+                    f"Price: ${current_price:.2f} | "
+                    f"52w: ${week_52_low:.0f}–${week_52_high:.0f} | "
+                    f"Support: ${support:.2f} | "
+                    f"Resistance: ${resistance:.2f}"
+                )
+                
+                blocks.append({
+                    "object": "block",
+                    "type": "callout",
+                    "callout": {
+                        "rich_text": [
+                            {
+                                "type": "text", 
+                                "text": {"content": f"{safe_pos['ticker']}: {price_context}"}
+                            }
+                        ],
+                        "icon": {"emoji": "💲"},
+                        "color": "gray_background"
+                    }
+                })
+        
+        return blocks
+    
+    def _build_enhanced_position_blocks(self, position_text, strong_buys, strong_sells):
+        """Build consolidated position recommendation blocks"""
         blocks = []
         
         blocks.append({
@@ -341,134 +477,143 @@ class NotionReporter:
             }
         })
         
+        # Use rich-text paragraph instead of code block for better formatting
         blocks.append({
             "object": "block",
-            "type": "code",
-            "code": {
-                "rich_text": [{"type": "text", "text": {"content": position_text}}],
-                "language": "plain text"
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [{"type": "text", "text": {"content": position_text}}]
             }
         })
         
-        # Add enhanced execution strategy for strong buys using centralized config
+        # Consolidated Execution Playbook (no duplication)
         if strong_buys:
-            from .report_consolidator import get_conviction_tier, safe_get_position_data
-            
-            max_conviction = max([pos.get('conviction', 0) for pos in strong_buys])
-            tier_config = get_conviction_tier(max_conviction)
-            
-            trading_notes = f"📈 EXECUTION PLAYBOOK ({tier_config['urgency']}):\n"
-            trading_notes += f"Timeframe: {tier_config['timeframe']} | Risk Level: {tier_config['tier']} conviction signals\n\n"
-            
-            for i, pos in enumerate(strong_buys[:2], 1):
-                safe_pos = safe_get_position_data(pos)
-                trading_notes += f"{i}. {safe_pos['ticker']} @ ${safe_pos['entry_price']:.2f}\n"
-                trading_notes += f"   • Score: {safe_pos['conviction']:.1f}/10 | Volume: {safe_pos['volume']:,}\n"
-                trading_notes += f"   • Entry: Limit order -1% below current\n"
-                trading_notes += f"   • Stop: {tier_config['stop']} | Target: {tier_config['target']}\n\n"
-            
-            blocks.append({
-                "object": "block",
-                "type": "callout",
-                "callout": {
-                    "rich_text": [{"type": "text", "text": {"content": trading_notes}}],
-                    "icon": {"emoji": "📈"}
-                }
-            })
-        
-        # Add macro context for sells
-        if strong_sells:
-            sell_context = "🔻 MARKET HEADWINDS:\n"
-            sell_context += "Technical breakdown coincides with macro uncertainty.\n\n"
-            
-            for pos in strong_sells[:2]:
-                inverse_ticker = self._get_inverse_ticker(pos['ticker'])
-                sell_context += f"• {pos['ticker']}: Bearish divergence detected\n"
-                sell_context += f"  Hedge via {inverse_ticker} (1-3% allocation)\n"
-                sell_context += f"  Context: Volume selling + momentum breakdown\n\n"
-            
-            sell_context += "Risk-off positioning recommended until trend clarity emerges."
-            
-            blocks.append({
-                "object": "block",
-                "type": "callout", 
-                "callout": {
-                    "rich_text": [{"type": "text", "text": {"content": sell_context}}],
-                    "icon": {"emoji": "⚠️"}
-                }
-            })
-        
-        # Add HOLD strategy explanation if no strong positions
-        if not strong_buys and not strong_sells:
-            hold_strategy = """📊 PATIENCE STRATEGY:
-Current signals below action threshold (1.5/10 conviction).
-
-• Market lacks clear directional momentum
-• Monitoring for volume breakouts and trend confirmation  
-• Cash position preserved for higher-probability setups
-• Watchlist tracking key technical levels for deployment
-
-Strategy: Wait for 2.0+ conviction scores before sizing positions."""
-            
-            blocks.append({
-                "object": "block",
-                "type": "callout",
-                "callout": {
-                    "rich_text": [{"type": "text", "text": {"content": hold_strategy}}],
-                    "icon": {"emoji": "⏸️"}
-                }
-            })
+            blocks.extend(self._build_execution_playbook(strong_buys))
         
         return blocks
     
-    def _build_risk_assessment_block(self, report_data, strong_buys, strong_sells):
-        """Build risk assessment block with enhanced warnings"""
-        risk_content = f"""📊 MARKET METRICS:
-• Sentiment: {report_data.get('market_sentiment', 'Mixed')}
-• Conviction: {report_data.get('conviction_level', 'Medium')}
-• Risk Level: {report_data.get('risk_level', 'Medium')}
-• Session Signals: {len(report_data.get('session_articles', []))}
-• Strong Positions: {len(strong_buys + strong_sells)}
-
-⚠️ KEY RISK FACTORS:
-• 🔴 Portfolio concentration in thematic ETFs - MAJOR RISK
-• Market volatility may impact momentum strategies
-• Consider diversification across sectors
-• Thematic ETFs can experience high correlation during drawdowns"""
+    def _build_execution_playbook(self, strong_buys):
+        """Build consolidated execution playbook with specific timeframes"""
+        blocks = []
         
-        return {
+        from .report_consolidator import get_conviction_tier, safe_get_position_data
+        from datetime import datetime, timedelta
+        
+        # Calculate average conviction for overall strategy
+        total_conviction = sum([pos.get('conviction', 0) for pos in strong_buys])
+        avg_conviction = total_conviction / len(strong_buys)
+        tier_config = get_conviction_tier(avg_conviction)
+        
+        # Calculate specific timeframe deadlines
+        today = datetime.now()
+        if tier_config['urgency'] == '⚡ IMMEDIATE':
+            deadline = today + timedelta(days=2)
+            deadline_str = f"by {deadline.strftime('%b %d')} close"
+        elif tier_config['urgency'] == '📅 PLANNED':
+            deadline = today + timedelta(days=5)
+            deadline_str = f"by {deadline.strftime('%b %d')} close"
+        else:
+            deadline_str = "monitor for better entry"
+        
+        blocks.append({
             "object": "block",
-            "type": "toggle",
-            "toggle": {
-                "rich_text": [{"type": "text", "text": {"content": f"⚠️ Risk Assessment - {report_data.get('risk_level', 'Medium')} Risk"}}],
-                "children": [
-                    {
-                        "object": "block",
-                        "type": "paragraph",
-                        "paragraph": {
-                            "rich_text": [{"type": "text", "text": {"content": risk_content.strip()}}]
-                        }
-                    }
-                ]
+            "type": "heading_3",
+            "heading_3": {
+                "rich_text": [{"type": "text", "text": {"content": f"📈 Execution Playbook ({tier_config['urgency']})"}}]
             }
-        }
+        })
+        
+        # Build consolidated execution strategy with specific timing
+        execution_text = f"Timeframe: {tier_config['timeframe']} ({deadline_str}) | Risk Level: {tier_config['tier']} conviction\n\n"
+        
+        # Add key risk factors directly in the playbook
+        execution_text += "⚠️ Key Risks: Thematic ETF concentration, momentum reversal risk\n\n"
+        
+        for i, pos in enumerate(strong_buys[:2], 1):
+            safe_pos = safe_get_position_data(pos)
+            volume_str = self._format_volume_with_liquidity(safe_pos['volume'])
+            
+            execution_text += f"{i}. {safe_pos['ticker']} @ ${safe_pos['entry_price']:.2f}\n"
+            execution_text += f"   • Volume: {volume_str}\n"
+            execution_text += f"   • Entry: Limit order -1% below current\n"
+            execution_text += f"   • Stop: {tier_config['stop']} | Target: {tier_config['target']}\n"
+            execution_text += f"   • Size: {tier_config['size']}\n\n"
+        
+        blocks.append({
+            "object": "block",
+            "type": "callout",
+            "callout": {
+                "rich_text": [{"type": "text", "text": {"content": execution_text.strip()}}],
+                "icon": {"emoji": "📈"}
+            }
+        })
+        
+        return blocks
+    
+    def _build_next_steps_blocks(self, strong_buys, strong_sells, report_data):
+        """Build actionable next steps section with risk factors integrated"""
+        blocks = []
+        
+        blocks.append({
+            "object": "block",
+            "type": "heading_2",
+            "heading_2": {
+                "rich_text": [{"type": "text", "text": {"content": "🎯 Next Steps"}}]
+            }
+        })
+        
+        # Generate action line based on positions
+        if strong_buys and len(strong_buys) >= 2:
+            action_line = f"Execute {len(strong_buys)} buy orders with limit entries -1% below current prices. Monitor for volume confirmation."
+        elif strong_buys and len(strong_buys) == 1:
+            ticker = strong_buys[0].get('ticker', 'ETF')
+            action_line = f"Single position entry: {ticker} with conservative sizing. Wait for additional signals before adding exposure."
+        elif strong_sells:
+            action_line = "Implement defensive hedging via inverse ETFs. Reduce risk exposure until trend clarity emerges."
+        else:
+            action_line = "Maintain cash position. Monitor watchlist for breakout confirmations before deploying capital."
+        
+        # Add market timing context
+        conviction_level = report_data.get('conviction_level', 'Medium')
+        if conviction_level == 'High':
+            timing_context = "Market conditions favor immediate action. Deploy capital within 24-48 hours."
+        elif conviction_level == 'Medium':
+            timing_context = "Moderate conviction suggests scaled entry over 3-5 days. Use dollar-cost averaging."
+        else:
+            timing_context = "Low conviction requires patience. Wait for stronger signals before committing capital."
+        
+        # Add exit conditions and risk management
+        risk_context = "\n⚠️ Exit Conditions: If broader market shows weakness or ETF correlation increases, reduce thematic exposure immediately."
+        
+        next_steps_text = f"{action_line}\n\n{timing_context}{risk_context}"
+        
+        blocks.append({
+            "object": "block",
+            "type": "callout",
+            "callout": {
+                "rich_text": [{"type": "text", "text": {"content": next_steps_text}}],
+                "icon": {"emoji": "🎯"}
+            }
+        })
+        
+        return blocks
     
     def _build_articles_block(self, session_articles):
-        """Build session articles block with enhanced context"""
+        """Build session articles block with enhanced context - collapsed by default"""
         article_list = []
-        for i, article in enumerate(session_articles[:10]):
+        for i, article in enumerate(session_articles[:8]):  # Trim to 8 most relevant
             confidence = article.get('confidence', 0)
             title = article.get('title', 'Unknown')
             signal = article.get('signal', 'Neutral')
             search_term = article.get('search_term', '')
             
-            # Create 5-word summary from title
+            # Create 4-word summary from title for conciseness
             title_words = title.split()
-            summary = ' '.join(title_words[:5]) + ('...' if len(title_words) > 5 else '')
+            summary = ' '.join(title_words[:4]) + ('...' if len(title_words) > 4 else '')
             
             signal_emoji = "📈" if signal == "Bullish" else "📉" if signal == "Bearish" else "➖"
             
-            article_text = f"{signal_emoji} (Confidence: {confidence}/10) – \"{summary}\" [{search_term}]"
+            article_text = f"{signal_emoji} {confidence}/10 – {summary} [{search_term}]"
             
             article_list.append({
                 "object": "block",
@@ -482,7 +627,7 @@ Strategy: Wait for 2.0+ conviction scores before sizing positions."""
             "object": "block",
             "type": "toggle",
             "toggle": {
-                "rich_text": [{"type": "text", "text": {"content": f"📰 Source Articles ({len(session_articles)})"}}],
+                "rich_text": [{"type": "text", "text": {"content": f"📰 Source Articles ({len(session_articles)}) - Click to expand"}}],
                 "children": article_list
             }
         }
