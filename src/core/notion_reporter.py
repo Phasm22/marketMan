@@ -83,6 +83,14 @@ class NotionReporter:
     def __init__(self, notion_token=None, database_id=None):
         self.notion_token = notion_token or os.getenv("NOTION_TOKEN")
         self.notion_database_id = database_id or os.getenv("NOTION_DATABASE_ID")
+        self.trades_database_id = os.getenv("TRADES_DATABASE_ID")
+        self.performance_database_id = os.getenv("PERFORMANCE_DATABASE_ID")
+        
+        # Validate required environment variables for performance dashboard
+        if not self.trades_database_id:
+            logger.warning("TRADES_DATABASE_ID not configured - trade reporting will be disabled")
+        if not self.performance_database_id:
+            logger.warning("PERFORMANCE_DATABASE_ID not configured - performance reporting will be disabled")
         
     def log_consolidated_report_to_notion(self, report_data):
         """Log consolidated signal report to Notion with enhanced financial formatting and cover image"""
@@ -660,3 +668,96 @@ class NotionReporter:
             return 'DRV/SCO'
         else:
             return inverse_map.get(ticker, 'SPXS/VXX')  # Default to broad market hedge
+
+    def report_trade(self, trade, signal_page_id=None):
+        """
+        Report a trade to the performance dashboard.
+        
+        Args:
+            trade (dict): Trade details containing:
+                - ticker (str): ETF ticker symbol
+                - action (str): 'BUY' or 'SELL'
+                - quantity (int): Number of shares
+                - price (float): Execution price
+                - timestamp (datetime): Trade execution time
+                - signal_confidence (float): Original signal confidence (optional)
+                - notes (str): Additional notes (optional)
+            signal_page_id (str): Notion page ID of the original signal (optional)
+            
+        Returns:
+            bool: True if successfully reported, False otherwise
+        """
+        if not self.notion_token or not self.trades_database_id:
+            logger.warning("Notion token or trades database ID not configured - skipping trade reporting")
+            return False
+            
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.notion_token}",
+                "Content-Type": "application/json",
+                "Notion-Version": "2022-06-28"
+            }
+            
+            # Build trade record properties
+            properties = {
+                "Ticker": {
+                    "title": [{"text": {"content": trade.get('ticker', 'UNKNOWN')}}]
+                },
+                "Action": {
+                    "select": {"name": trade.get('action', 'BUY')}
+                },
+                "Quantity": {
+                    "number": trade.get('quantity', 0)
+                },
+                "Price": {
+                    "number": trade.get('price', 0.0)
+                },
+                "Trade Date": {
+                    "date": {"start": trade.get('timestamp', datetime.now()).isoformat()}
+                }
+            }
+            
+            # Add optional fields if available
+            if trade.get('signal_confidence'):
+                properties["Signal Confidence"] = {
+                    "number": round(trade.get('signal_confidence'), 2)
+                }
+                
+            if signal_page_id:
+                properties["Signal Reference"] = {
+                    "relation": [{"id": signal_page_id}]
+                }
+                
+            if trade.get('notes'):
+                properties["Notes"] = {
+                    "rich_text": [{"text": {"content": trade.get('notes', '')}}]
+                }
+            
+            # Calculate trade value
+            trade_value = trade.get('quantity', 0) * trade.get('price', 0.0)
+            properties["Trade Value"] = {
+                "number": round(trade_value, 2)
+            }
+            
+            payload = {
+                "parent": {"database_id": self.trades_database_id},
+                "properties": properties
+            }
+            
+            response = requests.post(
+                "https://api.notion.com/v1/pages",
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"✅ Successfully reported trade: {trade.get('ticker')} {trade.get('action')} {trade.get('quantity')} @ ${trade.get('price')}")
+                return True
+            else:
+                logger.error(f"❌ Failed to report trade to Notion: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Error reporting trade to Notion: {e}")
+            return False

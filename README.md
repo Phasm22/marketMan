@@ -37,7 +37,8 @@ MarketMan transforms Google Alerts into actionable ETF trading signals using AI 
 - **📊 Real-time Data** → Live ETF prices and market snapshots
 - **🎯 Smart Batching** → Intelligent notification grouping
 - **📝 Notion Integration** → Comprehensive analysis logging
-- **📱 Pushover Alerts** → Professional mobile notifications
+- **� Performance Tracking** → Trade execution and P&L monitoring
+- **�📱 Pushover Alerts** → Professional mobile notifications
 
 ## ⚡ Quick Start
 
@@ -189,6 +190,14 @@ Simply update the Status dropdown in Notion to keep track of what you've reviewe
 - **Cover image fetching** via Microlink API
 - **Financial terminology** and risk assessments
 - **Consolidated report formatting** with position recommendations
+
+### 📈 Performance Dashboard (New)
+**Enhanced in:** `notion_reporter.py`
+- **Trade execution tracking** with automatic logging
+- **Portfolio performance monitoring** via dedicated databases
+- **P&L analysis** and signal effectiveness measurement
+- **Integration ready** for automated trade detection
+- **See:** `PERFORMANCE_DASHBOARD.md` for setup details
 
 ### 📊 Report Consolidation (New)
 **Primary Module:** `report_consolidator.py` (124 lines)
