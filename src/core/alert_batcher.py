@@ -200,7 +200,7 @@ class AlertBatcher:
                 "Bullish": "↗ BULLISH",
                 "Bearish": "↘ BEARISH", 
                 "Neutral": "→ NEUTRAL"
-            }.get(alert.signal, "? UNKNOWN")
+            }.get(alert.signal, "→ UNKNOWN")
             
             return f"""{signal_indicator} Signal ({alert.confidence}/10)
 
@@ -243,8 +243,8 @@ ETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
                     primary_signal = signal.split('|')[0]  # Take first signal
                 else:
                     primary_signal = signal
-                    
-                emoji = {"Bullish": "↗", "Bearish": "↘", "Neutral": "→"}.get(primary_signal, "?")
+                
+                emoji = {"Bullish": "↗", "Bearish": "↘", "Neutral": "→"}.get(primary_signal, "→")
                 signal_parts.append(f"{emoji} {count} {signal}")
         summary += f"Signals: {' | '.join(signal_parts)}\n\n"
         
@@ -252,7 +252,7 @@ ETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
         if high_conf_alerts:
             summary += "🔥 High Confidence Alerts:\n"
             for alert in high_conf_alerts[:3]:  # Top 3
-                summary += f"• {alert.signal} {alert.sector}: {alert.title[:50]}...\n"
+                summary += f"• {alert.signal} {alert.sector}: {alert.title}\n"
             if len(high_conf_alerts) > 3:
                 summary += f"• +{len(high_conf_alerts)-3} more high confidence signals\n"
             summary += "\n"

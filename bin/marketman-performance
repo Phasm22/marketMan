@@ -1,0 +1,11 @@
+#!/bin/bash
+# MarketMan Performance Watcher Cron Wrapper
+# Add this to crontab to keep the performance watcher running
+
+cd /root/marketMan
+
+# Activate virtual environment if needed
+# source venv/bin/activate
+
+# Run the watcher
+python3 src/core/performance_watcher.py >> /var/log/marketman-performance.log 2>&1

@@ -19,9 +19,7 @@ def main():
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
     
     # Test command
-    test_parser = subparsers.add_parser('test', help='Test system components')
-    test_parser.add_argument('--pushover', action='store_true', help='Test Pushover only')
-    test_parser.add_argument('--all', action='store_true', help='Run all tests')
+    test_parser = subparsers.add_parser('test', help='Run all tests with pytest')
     
     # Monitor command
     monitor_parser = subparsers.add_parser('monitor', help='Run monitoring')
@@ -53,7 +51,6 @@ def main():
     
     # Run command (main analysis)
     run_parser = subparsers.add_parser('run', help='Run news analysis')
-    run_parser.add_argument('--legacy', action='store_true', help='Use legacy analyzer')
     run_parser.add_argument('--test', action='store_true', help='Run in test mode')
     
     args = parser.parse_args()
@@ -63,14 +60,9 @@ def main():
         return
     
     if args.command == 'test':
-        if args.pushover:
-            print("🧪 Testing Pushover...")
-            success = test_pushover()
-            sys.exit(0 if success else 1)
-        else:
-            print("🧪 Running full test suite...")
-            import test_setup
-            test_setup.main()
+        print("🧪 Running all tests with pytest...")
+        result = subprocess.run(['pytest', 'tests/'])
+        sys.exit(result.returncode)
     
     elif args.command == 'monitor':
         from src.monitoring.marketman_monitor import MarketManMonitor
@@ -78,7 +70,6 @@ def main():
         
         if args.loop:
             print(f"🔄 Starting continuous monitoring (every {args.loop} minutes)")
-            # Import and run with loop
             import marketman_monitor
             sys.argv = ['marketman_monitor.py', '--loop', str(args.loop)]
             if args.system:
@@ -95,18 +86,11 @@ def main():
                 monitor.run_full_check()
     
     elif args.command == 'run':
+        print("🚀 Running MarketMan analysis...")
         if args.test:
-            print("🧪 Running MarketMan in test mode...")
-            if args.legacy:
-                subprocess.run(['python', 'src/core/news_gpt_analyzer.py', 'test'])
-            else:
-                subprocess.run(['python', '-m', 'src.core.news_analyzer_refactored', 'test'])
+            subprocess.run(['python', '-m', 'src.core.news_analyzer_refactored', 'test'])
         else:
-            print("🚀 Running MarketMan analysis...")
-            if args.legacy:
-                subprocess.run(['python', 'src/core/news_gpt_analyzer.py'])
-            else:
-                subprocess.run(['python', '-m', 'src.core.news_analyzer_refactored'])
+            subprocess.run(['python', '-m', 'src.core.news_analyzer_refactored'])
     
     elif args.command == 'send':
         success = send_pushover_notification(args.message, args.title, args.priority)
@@ -155,29 +139,22 @@ def main():
                 else:
                     print(f"✅ Cleanup complete: No records older than {args.cleanup} days found")
                     print(f"   (Would delete records older than {cutoff_date})")
-            
+        
         elif args.stats:
             print("📊 Memory Statistics:")
             stats = memory.get_memory_stats()
             print(f"   Total signals: {stats.get('total_signals', 0)}")
             print(f"   Recent signals (7 days): {stats.get('recent_activity', 0)}")
-            
-            # Show signal breakdown if available
             breakdown = stats.get('signal_breakdown', {})
             if breakdown:
                 print("   Signal breakdown:")
                 for signal_type, count in breakdown.items():
                     print(f"     {signal_type}: {count}")
-            
-            # Show date range if available
             date_range = stats.get('date_range', (None, None))
             if date_range[0] and date_range[1]:
                 print(f"   Date range: {date_range[0]} to {date_range[1]}")
-            
-            # Get database file size
             db_path = stats.get('db_path', 'marketman_memory.db')
             try:
-                import os
                 if os.path.exists(db_path):
                     size_mb = os.path.getsize(db_path) / (1024 * 1024)
                     print(f"   Database size: {size_mb:.2f} MB")
@@ -185,18 +162,15 @@ def main():
                     print("   Database: Not yet created")
             except Exception as e:
                 print(f"   Database size: Unable to determine ({e})")
-            
-            # Get active patterns count
             try:
                 patterns = memory.detect_patterns()
                 print(f"   Active patterns: {len(patterns)}")
             except:
                 print("   Active patterns: 0")
-            
+        
         elif args.patterns or args.etf:
             etf_filter = args.etf.upper() if args.etf else None
             patterns = memory.detect_patterns(etf_symbol=etf_filter)
-            
             if not patterns:
                 filter_text = f" for {etf_filter}" if etf_filter else ""
                 print(f"🤷 No patterns found{filter_text}")
@@ -205,14 +179,13 @@ def main():
                 for pattern in patterns:
                     print(f"   • {pattern['description']}")
         else:
-            # Show recent signals by default
             signals = memory.get_recent_signals(args.days)
             if not signals:
                 print(f"📭 No signals found in the last {args.days} days")
             else:
                 print(f"📈 Last {len(signals)} signals ({args.days} days):")
-                for signal in signals[:10]:  # Limit to 10 most recent
-                    etfs_str = ", ".join(signal['etfs'][:3])  # Show first 3 ETFs
+                for signal in signals[:10]:
+                    etfs_str = ", ".join(signal['etfs'][:3])
                     print(f"   • {signal['date']} - {signal['signal']} ({signal['confidence']}/10) - {etfs_str}")
                     print(f"     {signal['title'][:80]}...")
                     print()
