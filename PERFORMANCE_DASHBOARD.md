@@ -16,9 +16,16 @@ TRADES_DATABASE_ID=your-trades-database-id
 PERFORMANCE_DATABASE_ID=your-performance-database-id
 ```
 
-### 2. Notion Database Schema
+### 2. Notion Database Setup
 
-Create two Notion databases with the following schemas:
+⚠️ **Important**: You must manually create the databases in Notion with the exact schema below.
+
+Run the setup guide:
+```bash
+python3 setup_notion_performance.py
+```
+
+This will show you exactly how to create the required databases with the correct property names and types.
 
 #### Trades Database Schema
 

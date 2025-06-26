@@ -9,6 +9,10 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# Load Notion DB IDs for trades and performance
+trades_db_id = os.getenv("TRADES_DATABASE_ID")
+perf_db_id = os.getenv("PERFORMANCE_DATABASE_ID")
+
 def get_microlink_image(url):
     """Fetch article preview image using Microlink API with enhanced fallback logic"""
     try:
@@ -723,10 +727,18 @@ class NotionReporter:
                     "number": round(trade.get('signal_confidence'), 2)
                 }
                 
+            # Validate signal_page_id is a proper UUID before adding relation
             if signal_page_id:
-                properties["Signal Reference"] = {
-                    "relation": [{"id": signal_page_id}]
-                }
+                # Simple UUID format validation (8-4-4-4-12 hex characters)
+                import re
+                uuid_pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                if re.match(uuid_pattern, signal_page_id, re.IGNORECASE):
+                    properties["Signal Reference"] = {
+                        "relation": [{"id": signal_page_id}]
+                    }
+                    logger.debug(f"🔗 Adding signal reference: {signal_page_id}")
+                else:
+                    logger.warning(f"⚠️ Invalid UUID format for signal_page_id: {signal_page_id}")
                 
             if trade.get('notes'):
                 properties["Notes"] = {
@@ -761,3 +773,49 @@ class NotionReporter:
         except Exception as e:
             logger.error(f"❌ Error reporting trade to Notion: {e}")
             return False
+    
+    def report_trade_to_notion(trade: dict, signal_id: str) -> dict:
+        """
+        Report a trade to the performance dashboard Notion database.
+        Args:
+            trade (dict): Trade info with keys: ticker, run_date, quantity, fill_price, settlement_date, buy_sell, entry_price, exit_price
+            signal_id (str): Notion page ID of the original signal
+        Returns:
+            dict: Notion API response
+        """
+        if not perf_db_id:
+            raise RuntimeError("PERFORMANCE_DATABASE_ID must be set in the environment to report trades to Notion.")
+        
+        pl_pct = round((trade["exit_price"] - trade["entry_price"]) / trade["entry_price"] * 100, 2)
+        duration = (trade["settlement_date"] - trade["run_date"]).days
+        win = pl_pct > 0
+        
+        payload = {
+            "parent": {"database_id": perf_db_id},
+            "properties": {
+                "Ticker": {"title": [{"text": {"content": trade["ticker"]}}]},
+                "Run Date": {"date": {"start": trade["run_date"].isoformat()}},
+                "Quantity": {"number": trade["quantity"]},
+                "Fill Price": {"number": trade["fill_price"]},
+                "Settlement Date": {"date": {"start": trade["settlement_date"].isoformat()}} ,
+                "Buy/Sell": {"select": {"name": trade["buy_sell"]}},
+                "Entry Price": {"number": trade["entry_price"]},
+                "Exit Price": {"number": trade["exit_price"]},
+                "P/L %": {"rich_text": [{"text": {"content": f"{pl_pct}%"}}]},
+                "Duration": {"number": duration},
+                "MarketMan Analysis": {"relation": [{"id": signal_id}]},
+                "Win?": {"checkbox": win}
+            }
+        }
+        headers = {
+            "Authorization": f"Bearer {os.getenv('NOTION_TOKEN')}",
+            "Content-Type": "application/json",
+            "Notion-Version": "2022-06-28"
+        }
+        resp = requests.post("https://api.notion.com/v1/pages", json=payload, headers=headers, timeout=30)
+        return resp.json()
+
+# Example usage after marking a signal "Acted On":
+# trades_for_signal = ... # fetch from TRADES_DATABASE_ID
+# for trade in trades_for_signal:
+#     report_trade_to_notion(trade, signal_page_id)
