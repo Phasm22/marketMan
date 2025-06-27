@@ -15,7 +15,7 @@ from src.core.market_memory import MarketMemory
 from src.core.alert_batcher import queue_alert, process_alert_queue, BatchStrategy
 
 # Import refactored modules
-from src.core.etf_analyzer import analyze_thematic_etf_news, generate_tactical_explanation, categorize_etfs_by_sector
+from src.core.etf_signal_engine import analyze_thematic_etf_news, generate_tactical_explanation, categorize_etfs_by_sector
 from src.core.market_data import get_market_snapshot
 from src.core.gmail_poller import GmailPoller
 from src.core.notion_reporter import NotionReporter

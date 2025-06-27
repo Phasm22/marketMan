@@ -1,0 +1,77 @@
+
+MarketMan Agentic AI Implementation Prompt
+=========================================
+
+Objective:
+Refactor the ETF analysis pipeline to separate hard (primary) rules from soft (secondary) technical filters, ensuring robust, production-ready changes without introducing pipeline errors.
+
+Instructions:
+
+1. Understand the Project:
+   - Review [README.md] and project structure, focusing on modular design, CLI tools, alert batching, Notion integration, and the ETF analysis pipeline.
+
+2. Pre-Implementation Testing:
+   - Run all tests:
+     ./bin/marketman test
+   - If failures/warnings occur, halt and report before proceeding.
+   - Optionally test Notion integration and alert batching:
+     python setup/notion_setup_enhanced.py --test
+     ./bin/marketman-alerts test
+   - Confirm the pipeline processes Google Alerts, filters ETFs, applies technical screening, generates Notion reports, and queues/sends alerts without errors.
+
+3. Implementation Guidelines:
+   - Make changes only if the pipeline is stable.
+   - Key requirements:
+     - Separate hard (must-pass) rules from soft (scored) technical filters.
+     - Hard rules: e.g., confidence ≥ 7, actionable signal, at least one specialized ETF.
+     - Soft rules: e.g., RSI in 45–60, MACD positive, Bollinger Bands tight. Score and log, but do not block signals.
+     - Implement a helper function (e.g., technical_score) that returns a score and notes for soft rules.
+     - Output must include: all original fields, technical_score, technical_notes.
+     - If a signal fails a hard rule, exclude it. If it passes hard rules but has a low technical score, include and flag for review.
+     - Log hard rule failures and soft rule results.
+     - Use rich-text, color-coded liquidity, and clear formatting in Notion reports.
+     - Avoid duplicate or redundant recommendations.
+     - Every report must include clear next steps, timing, risk management, and exit conditions.
+     - Ensure robust error handling and logging for all API calls and integrations.
+     - After changes, re-run all tests and validate the pipeline, CLI, and integrations.
+
+4. Post-Implementation Validation:
+   - Re-run ./bin/marketman test
+   - Manually trigger a sample analysis and Notion report to verify formatting and data integrity.
+   - Check logs for errors or warnings.
+   - Confirm enhancements are reflected in the output (see setup/ENHANCED_FORMATTING_SUMMARY.py).
+
+5. Documentation:
+   - Update README or relevant docs if user-facing behavior or configuration changes.
+   - Summarize all changes and testing steps in a changelog or commit message.
+
+Constraints:
+ - Do not weaken or remove existing hard rule logic.
+ - Do not block signals solely on soft rule failure.
+ - Maintain compatibility with existing output and downstream consumers.
+
+Notes:
+ - If additional technical indicators are available, extend the scoring function.
+ - If technical data is missing, handle gracefully (e.g., score 0, note "data unavailable").
+ - This pattern should be reusable for other asset classes or strategies.
+
+Reference Files:
+ - README.md
+ - setup/ENHANCED_FORMATTING_SUMMARY.py
+ - src/core/etf_analyzer.py
+ - src/core/news_analyzer_refactored.py
+ - src/core/notion_reporter.py
+ - src/integrations/notion_setup_enhanced.py
+ - bin/marketman
+ - bin/marketman-alerts
+
+Testing Commands:
+ - ./bin/marketman test
+ - python setup/notion_setup_enhanced.py --test
+ - ./bin/marketman-alerts test
+
+Expected Output:
+ - No pipeline errors
+ - All tests pass
+ - Notion reports are correctly formatted and actionable
+ - Alerts are batched and delivered as expected

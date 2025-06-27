@@ -135,8 +135,45 @@ Otherwise, return:
 **REMEMBER:** Favor specialized, pure-play ETFs over broad market funds. Only include broad-market ETFs if truly no specialized alternatives exist for the theme.
 """
 
-def analyze_thematic_etf_news(headline, summary, snippet="", etf_prices=None, contextual_insight=None, memory=None):
-    """Analyze news for thematic ETF opportunities using MarketMan AI"""
+def technical_score(rsi=None, macd=None, bollinger=None):
+    """
+    Evaluate soft (secondary) technical indicators for a trade signal.
+    Returns (score, notes) where score is the number of soft rules passed, and notes is a summary string.
+    """
+    score = 0
+    notes = []
+    if rsi is not None:
+        if 45 < rsi < 60:
+            score += 1
+            notes.append("RSI in optimal range")
+        else:
+            notes.append(f"RSI out of range: {rsi}")
+    else:
+        notes.append("RSI data unavailable")
+    if macd is not None:
+        if macd > 0:
+            score += 1
+            notes.append("MACD positive")
+        else:
+            notes.append(f"MACD not positive: {macd}")
+    else:
+        notes.append("MACD data unavailable")
+    if bollinger is not None:
+        if bollinger == 'tight':
+            score += 1
+            notes.append("Bollinger bands tight")
+        else:
+            notes.append(f"Bollinger bands: {bollinger}")
+    else:
+        notes.append("Bollinger data unavailable")
+    return score, "; ".join(notes)
+
+def analyze_thematic_etf_news(headline, summary, snippet="", etf_prices=None, contextual_insight=None, memory=None, rsi=None, macd=None, bollinger=None):
+    """
+    Analyze news for thematic ETF opportunities using MarketMan AI.
+    Applies hard (primary) rules first, then soft (secondary) technical scoring.
+    Returns analysis result with technical_score and technical_notes fields.
+    """
     # Compact logging for production, detailed for debug
     if DEBUG_MODE:
         logger.debug(f"🤖 MarketMan ANALYZING:")
@@ -165,19 +202,35 @@ def analyze_thematic_etf_news(headline, summary, snippet="", etf_prices=None, co
         # Clean up common JSON formatting issues
         result = result.replace('```json', '').replace('```', '')
         result = result.strip()
-        
-        # Try to parse as JSON
         try:
             json_result = json.loads(result)
-            
-            # Check if content is not financial/ETF related
-            if json_result.get('relevance') == 'not_financial':
-                logger.info(f"🚫 MarketMan says: Not ETF/thematic content: {headline[:50]}...")
+            # Hard rules
+            hard_rule_fail = False
+            hard_rule_notes = []
+            # 1. confidence >= 7
+            if json_result.get('confidence', 0) < 7:
+                hard_rule_fail = True
+                hard_rule_notes.append(f"Confidence below threshold: {json_result.get('confidence')}")
+            # 2. signal is Bullish or Bearish
+            if json_result.get('signal', '').lower() not in ['bullish', 'bearish']:
+                hard_rule_fail = True
+                hard_rule_notes.append(f"Signal not actionable: {json_result.get('signal')}")
+            # 3. affected_etfs contains at least one specialized ETF
+            specialized_etfs = ['BOTZ', 'ITA', 'ICLN', 'URA', 'XAR', 'DFEN', 'PPA', 'ROBO', 'IRBO', 'ARKQ', 'SMH', 'SOXX', 'TAN', 'QCLN', 'PBW', 'LIT', 'REMX', 'URNM', 'NLR', 'VIXY', 'VXX', 'SQQQ', 'SPXS']
+            if not any(etf in specialized_etfs for etf in json_result.get('affected_etfs', [])):
+                hard_rule_fail = True
+                hard_rule_notes.append("No specialized ETF in affected_etfs")
+            if hard_rule_fail:
+                logger.info(f"🚫 Hard rule filter: {'; '.join(hard_rule_notes)} | {headline[:50]}...")
                 return None
-                
+            # Soft rules (technical scoring)
+            score, notes = technical_score(rsi, macd, bollinger)
+            json_result['technical_score'] = score
+            json_result['technical_notes'] = notes
+            if DEBUG_MODE:
+                logger.debug(f"🧪 Technical score: {score} | Notes: {notes}")
             # Add metadata to the analysis result
             json_result['analysis_timestamp'] = datetime.now().isoformat()
-            
             # Store the analysis in memory for contextual tracking
             if memory:
                 try:
@@ -185,20 +238,14 @@ def analyze_thematic_etf_news(headline, summary, snippet="", etf_prices=None, co
                     logger.debug("💾 Analysis stored in MarketMemory")
                 except Exception as mem_error:
                     logger.warning(f"⚠️ Failed to store analysis in memory: {mem_error}")
-                
             return json_result
-            
         except json.JSONDecodeError as e:
             logger.error(f"❌ Failed to parse MarketMan response as JSON: {e}")
             if DEBUG_MODE:
                 logger.error(f"Raw response: {result}")
-            
-            # Try to extract signal from text if JSON parsing fails
             if "not energy related" in result.lower() or "not_financial" in result.lower():
                 logger.info(f"🚫 MarketMan detected non-ETF content: {headline[:50]}...")
                 return None
-                
-            # Return a basic structure if we can't parse JSON
             return {
                 "relevance": "financial",
                 "sector": "Thematic",
@@ -206,9 +253,10 @@ def analyze_thematic_etf_news(headline, summary, snippet="", etf_prices=None, co
                 "confidence": 1,
                 "affected_etfs": [],
                 "reasoning": "Failed to parse AI response",
-                "raw_response": result
+                "raw_response": result,
+                "technical_score": 0,
+                "technical_notes": "JSON parse error; no technicals"
             }
-            
     except Exception as e:
         logger.error(f"❌ Error calling OpenAI API: {e}")
         return None

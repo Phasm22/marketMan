@@ -88,9 +88,9 @@ def main():
     elif args.command == 'run':
         print("🚀 Running MarketMan analysis...")
         if args.test:
-            subprocess.run(['python', '-m', 'src.core.news_analyzer_refactored', 'test'])
+            subprocess.run(['python', '-m', 'src.core.news_signal_orchestrator', 'test'])
         else:
-            subprocess.run(['python', '-m', 'src.core.news_analyzer_refactored'])
+            subprocess.run(['python', '-m', 'src.core.news_signal_orchestrator'])
     
     elif args.command == 'send':
         success = send_pushover_notification(args.message, args.title, args.priority)

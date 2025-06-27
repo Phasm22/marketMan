@@ -15,7 +15,7 @@ class MarketMemory:
     def __init__(
         self,
         db_path: str = None,
-        max_days_apart: int = 3,
+        max_time_apart: Optional[int] = 3 * 86400,  # default to 3 days in seconds
         confidence_threshold: int = 6,
         volatility_window: int = 7,
         min_consecutive: int = 2
@@ -29,7 +29,7 @@ class MarketMemory:
             db_path = os.path.join(project_root, "data", "marketman_memory.db")
         self.db_path = db_path
         # Configurable pattern detection thresholds
-        self.max_days_apart = max_days_apart
+        self.max_time_apart = max_time_apart
         self.confidence_threshold = confidence_threshold
         self.volatility_window = volatility_window
         self.min_consecutive = min_consecutive
@@ -283,12 +283,12 @@ class MarketMemory:
         for i in range(1, len(signals)):
             signal = signals[i]
 
-            # Check if signal is within max_days_apart of previous
+            # Check if signal is within max_time_apart seconds of previous
             prev_date = self._parse_timestamp_safely(signals[i-1]['timestamp'])
             curr_date = self._parse_timestamp_safely(signal['timestamp'])
-            days_apart = (curr_date - prev_date).days
+            time_diff = (curr_date - prev_date).total_seconds()
 
-            if signal['signal'] == current_signal and days_apart <= self.max_days_apart:
+            if signal['signal'] == current_signal and time_diff <= self.max_time_apart:
                 current_streak += 1
                 confidences.append(signal['confidence'])
             else:
@@ -580,13 +580,14 @@ class MarketMemory:
             if 'T' in timestamp_str and ('+' in timestamp_str or 'Z' in timestamp_str):
                 if timestamp_str.endswith('Z'):
                     timestamp_str = timestamp_str.replace('Z', '+00:00')
-                return datetime.fromisoformat(timestamp_str)
+                parsed_time = datetime.fromisoformat(timestamp_str)
             else:
                 # Handle naive timestamps - assume UTC
-                dt = datetime.fromisoformat(timestamp_str)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                return dt
+                parsed_time = datetime.fromisoformat(timestamp_str)
+                if parsed_time.tzinfo is None:
+                    parsed_time = parsed_time.replace(tzinfo=timezone.utc)
+            logger.debug(f"\U0001F570️ Parsed timestamp: raw={timestamp_str} → parsed={parsed_time.isoformat()}")
+            return parsed_time
         except Exception as e:
             logger.warning(f"⚠️ Error parsing timestamp {timestamp_str}: {e}")
             # Fallback to current time with UTC timezone
