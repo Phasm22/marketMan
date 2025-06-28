@@ -12,6 +12,9 @@ from .pushover_utils import send_energy_alert, send_system_alert
 # Phase 3 components
 from .fidelity_integration import FidelityIntegration, FidelityTrade, create_fidelity_integration, auto_import_fidelity_trades, setup_fidelity_email_monitoring
 
+# Phase 4 components
+from .notion_phase4 import Phase4NotionIntegration, notion_phase4
+
 __all__ = [
     # Existing components
     "NotionReporter",
@@ -25,5 +28,9 @@ __all__ = [
     "FidelityTrade",
     "create_fidelity_integration",
     "auto_import_fidelity_trades",
-    "setup_fidelity_email_monitoring"
+    "setup_fidelity_email_monitoring",
+    
+    # Phase 4 components
+    "Phase4NotionIntegration",
+    "notion_phase4"
 ]
