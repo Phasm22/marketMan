@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+"""
+MarketMan CLI Entry Point
+
+This script provides an easy way to run the MarketMan CLI from the project root.
+"""
+
+import sys
+import os
+
+# Add the project root to the Python path
+project_root = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, project_root)
+
+# Import and run the main CLI
+from src.cli.main import main
+
+if __name__ == "__main__":
+    sys.exit(main()) 
