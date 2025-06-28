@@ -17,67 +17,69 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from src.integrations.pushover_utils import send_system_alert, send_pushover_notification
-from src.core.news_gpt_analyzer import NewsAnalyzer
+from src.core.signals.news_gpt_analyzer import NewsAnalyzer
 from src.integrations.gmail_organizer import GmailOrganizer
 import logging
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
 
 class SystemMonitor:
     """System monitoring functionality (like your server_monitor.py)"""
-    
+
     def __init__(self, hosts=None):
         self.hosts = hosts or [
             "yang.prox",
             "8.8.8.8",  # Google DNS as backup
-            "1.1.1.1"   # Cloudflare DNS as backup
+            "1.1.1.1",  # Cloudflare DNS as backup
         ]
-    
+
     def ping_host(self, host, timeout=5):
         """Ping a host and return True if reachable"""
         try:
             # Use ping command (works on Linux)
             result = subprocess.run(
-                ['ping', '-c', '1', '-W', str(timeout), host],
+                ["ping", "-c", "1", "-W", str(timeout), host],
                 capture_output=True,
                 text=True,
-                timeout=timeout + 2
+                timeout=timeout + 2,
             )
             return result.returncode == 0
         except Exception as e:
             logger.error(f"Error pinging {host}: {e}")
             return False
-    
+
     def check_all_hosts(self):
         """Check all hosts and return status"""
         results = {}
         for host in self.hosts:
             is_up = self.ping_host(host)
             results[host] = is_up
-            
+
             status = "UP" if is_up else "DOWN"
             logger.info(f"{host}: {status}")
-            
+
             # Send alert for down hosts
             if not is_up:
                 send_system_alert(
                     service_name=host,
                     status="DOWN",
-                    details=f"Host unreachable at {datetime.now().strftime('%H:%M:%S')}"
+                    details=f"Host unreachable at {datetime.now().strftime('%H:%M:%S')}",
                 )
-        
+
         return results
+
 
 class MarketManMonitor:
     """Combined monitoring system"""
-    
+
     def __init__(self):
         self.system_monitor = SystemMonitor()
         self.news_analyzer = NewsAnalyzer()
         self.gmail_organizer = GmailOrganizer()
-    
+
     def run_system_check(self):
         """Run system monitoring check"""
         logger.info("🖥️  Running system check...")
@@ -85,31 +87,31 @@ class MarketManMonitor:
             results = self.system_monitor.check_all_hosts()
             up_count = sum(1 for status in results.values() if status)
             total_count = len(results)
-            
+
             logger.info(f"System check complete: {up_count}/{total_count} hosts up")
             return results
         except Exception as e:
             logger.error(f"System check failed: {e}")
             send_system_alert("System Monitor", "ERROR", f"Monitor crashed: {e}")
             return {}
-    
+
     def run_gmail_cleanup(self):
         """Run Gmail cleanup to organize MarketMan emails"""
         logger.info("📧 Running Gmail cleanup...")
         try:
             result = self.gmail_organizer.organize_marketman_emails(days_back=3, dry_run=False)
-            if 'error' not in result and result.get('moved', 0) > 0:
+            if "error" not in result and result.get("moved", 0) > 0:
                 logger.info(f"📁 Organized {result['moved']} MarketMan emails")
                 return result
-            elif 'error' in result:
+            elif "error" in result:
                 logger.warning(f"Gmail cleanup skipped: {result['error']}")
             else:
                 logger.info("📧 No emails to organize")
             return result
         except Exception as e:
             logger.error(f"Gmail cleanup failed: {e}")
-            return {'error': str(e)}
-    
+            return {"error": str(e)}
+
     def run_news_check(self):
         """Run news analysis check"""
         logger.info("📰 Running news analysis...")
@@ -119,57 +121,59 @@ class MarketManMonitor:
         except Exception as e:
             logger.error(f"News analysis failed: {e}")
             send_system_alert("News Analyzer", "ERROR", f"Analysis failed: {e}")
-    
+
     def run_full_check(self):
         """Run both system and news checks"""
         logger.info("🚀 Starting MarketMan full check...")
-        
+
         # System monitoring
         system_results = self.run_system_check()
-        
-        # Gmail cleanup (every few runs to avoid rate limits)  
+
+        # Gmail cleanup (every few runs to avoid rate limits)
         gmail_result = self.run_gmail_cleanup()
-        
+
         # News analysis
         self.run_news_check()
-        
+
         # Summary notification for successful run
         up_hosts = sum(1 for status in system_results.values() if status)
         total_hosts = len(system_results)
-        
+
         gmail_msg = ""
-        if gmail_result and gmail_result.get('moved', 0) > 0:
+        if gmail_result and gmail_result.get("moved", 0) > 0:
             gmail_msg = f"\n📁 Organized {gmail_result['moved']} emails"
-        
+
         send_pushover_notification(
             message=f"✅ MarketMan check complete\n🖥️ System: {up_hosts}/{total_hosts} hosts up\n📰 News analysis completed{gmail_msg}",
             title="MarketMan Status",
-            priority=-1  # Quiet notification
+            priority=-1,  # Quiet notification
         )
-        
+
         logger.info("🎉 MarketMan check complete")
+
 
 def main():
     """Main function for CLI usage"""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="MarketMan Combined Monitor")
     parser.add_argument("--system-only", action="store_true", help="Run only system monitoring")
-    parser.add_argument("--news-only", action="store_true", help="Run only news analysis") 
+    parser.add_argument("--news-only", action="store_true", help="Run only news analysis")
     parser.add_argument("--gmail-only", action="store_true", help="Run only Gmail cleanup")
     parser.add_argument("--loop", type=int, help="Run continuously with interval in minutes")
     parser.add_argument("--test", action="store_true", help="Test Pushover connectivity")
-    
+
     args = parser.parse_args()
-    
+
     monitor = MarketManMonitor()
-    
+
     if args.test:
         print("🧪 Testing Pushover connectivity...")
         from pushover_utils import test_pushover
+
         success = test_pushover()
         sys.exit(0 if success else 1)
-    
+
     if args.loop:
         logger.info(f"🔄 Starting continuous monitoring (every {args.loop} minutes)")
         while True:
@@ -182,10 +186,10 @@ def main():
                     monitor.run_gmail_cleanup()
                 else:
                     monitor.run_full_check()
-                
+
                 logger.info(f"💤 Sleeping for {args.loop} minutes...")
                 time.sleep(args.loop * 60)
-                
+
             except KeyboardInterrupt:
                 logger.info("👋 Stopping monitor...")
                 break
@@ -202,6 +206,7 @@ def main():
             monitor.run_gmail_cleanup()
         else:
             monitor.run_full_check()
+
 
 if __name__ == "__main__":
     main()

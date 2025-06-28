@@ -10,7 +10,4 @@ This module contains all risk management logic including:
 
 from .position_sizing import PositionSizer, PositionSizeResult
 
-__all__ = [
-    'PositionSizer',
-    'PositionSizeResult'
-] 
+__all__ = ["PositionSizer", "PositionSizeResult"]

@@ -15,19 +15,20 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 DEBUG_MODE = os.getenv("DEBUG", "false").lower() == "true"
 logger = logging.getLogger(__name__)
 
+
 def generate_tactical_explanation(analysis_result, article_title):
     """Generate a tactical, conversational explanation of the trading signal"""
     try:
-        signal = analysis_result.get('signal', 'Neutral')
-        confidence = analysis_result.get('confidence', 0)
-        etfs = analysis_result.get('affected_etfs', [])
-        reasoning = analysis_result.get('reasoning', '')
-        sector = analysis_result.get('sector', 'Mixed')
-        
+        signal = analysis_result.get("signal", "Neutral")
+        confidence = analysis_result.get("confidence", 0)
+        etfs = analysis_result.get("affected_etfs", [])
+        reasoning = analysis_result.get("reasoning", "")
+        sector = analysis_result.get("sector", "Mixed")
+
         # Only generate tactical explanations for high-confidence signals
         if confidence < 7:
             return None
-            
+
         prompt = f"""
 You are MarketMan's senior portfolio strategist. Generate a tactical trading brief using proper financial terminology and specific actionable recommendations.
 
@@ -67,16 +68,17 @@ Use proper financial terminology: entry/exit levels, position sizing, risk-rewar
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,  # Slightly higher for more personality
-            max_tokens=400
+            max_tokens=400,
         )
 
-        tactical_explanation = response['choices'][0]['message']['content'].strip()
+        tactical_explanation = response["choices"][0]["message"]["content"].strip()
         logger.info(f"💡 Generated tactical explanation ({len(tactical_explanation)} chars)")
         return tactical_explanation
-        
+
     except Exception as e:
         logger.warning(f"⚠️ Failed to generate tactical explanation: {e}")
         return None
+
 
 def build_analysis_prompt(headline, summary, snippet="", etf_prices=None, contextual_insight=None):
     """Build comprehensive analysis prompt for MarketMan AI"""
@@ -85,8 +87,8 @@ def build_analysis_prompt(headline, summary, snippet="", etf_prices=None, contex
     if etf_prices:
         price_context = "\n\n📊 LIVE MARKET SNAPSHOT:\n"
         for symbol, data in etf_prices.items():
-            change_sign = "+" if data['change_pct'] >= 0 else ""
-            trend_emoji = "📈" if data['change_pct'] > 0 else "📉" if data['change_pct'] < 0 else "➖"
+            change_sign = "+" if data["change_pct"] >= 0 else ""
+            trend_emoji = "📈" if data["change_pct"] > 0 else "📉" if data["change_pct"] < 0 else "➖"
             price_context += f"• {symbol} ({data.get('name', symbol)}): ${data['price']} ({change_sign}{data['change_pct']}%) {trend_emoji}\n"
         price_context += "\nUse this real-time data to inform your strategic analysis.\n"
 
@@ -135,6 +137,7 @@ Otherwise, return:
 **REMEMBER:** Favor specialized, pure-play ETFs over broad market funds. Only include broad-market ETFs if truly no specialized alternatives exist for the theme.
 """
 
+
 def technical_score(rsi=None, macd=None, bollinger=None):
     """
     Evaluate soft (secondary) technical indicators for a trade signal.
@@ -159,7 +162,7 @@ def technical_score(rsi=None, macd=None, bollinger=None):
     else:
         notes.append("MACD data unavailable")
     if bollinger is not None:
-        if bollinger == 'tight':
+        if bollinger == "tight":
             score += 1
             notes.append("Bollinger bands tight")
         else:
@@ -168,7 +171,18 @@ def technical_score(rsi=None, macd=None, bollinger=None):
         notes.append("Bollinger data unavailable")
     return score, "; ".join(notes)
 
-def analyze_thematic_etf_news(headline, summary, snippet="", etf_prices=None, contextual_insight=None, memory=None, rsi=None, macd=None, bollinger=None):
+
+def analyze_thematic_etf_news(
+    headline,
+    summary,
+    snippet="",
+    etf_prices=None,
+    contextual_insight=None,
+    memory=None,
+    rsi=None,
+    macd=None,
+    bollinger=None,
+):
     """
     Analyze news for thematic ETF opportunities using MarketMan AI.
     Applies hard (primary) rules first, then soft (secondary) technical scoring.
@@ -178,29 +192,29 @@ def analyze_thematic_etf_news(headline, summary, snippet="", etf_prices=None, co
     if DEBUG_MODE:
         logger.debug(f"🤖 MarketMan ANALYZING:")
         logger.debug(f"   Title: '{headline}'")
-        logger.debug(f"   Summary: '{summary}'") 
+        logger.debug(f"   Summary: '{summary}'")
         logger.debug(f"   Snippet: '{snippet}'")
     else:
         logger.info(f"🤖 Analyzing: {headline[:60]}...")
-    
+
     prompt = build_analysis_prompt(headline, summary, snippet, etf_prices, contextual_insight)
 
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.1  # Lower temperature for more consistent JSON
+            temperature=0.1,  # Lower temperature for more consistent JSON
         )
 
-        result = response['choices'][0]['message']['content'].strip()
-        
+        result = response["choices"][0]["message"]["content"].strip()
+
         if DEBUG_MODE:
             logger.debug(f"🤖 MarketMan RESPONSE: {result}")
         else:
             logger.debug(f"🤖 Response received ({len(result)} chars)")
-        
+
         # Clean up common JSON formatting issues
-        result = result.replace('```json', '').replace('```', '')
+        result = result.replace("```json", "").replace("```", "")
         result = result.strip()
         try:
             json_result = json.loads(result)
@@ -208,29 +222,57 @@ def analyze_thematic_etf_news(headline, summary, snippet="", etf_prices=None, co
             hard_rule_fail = False
             hard_rule_notes = []
             # 1. confidence >= 7
-            if json_result.get('confidence', 0) < 7:
+            if json_result.get("confidence", 0) < 7:
                 hard_rule_fail = True
-                hard_rule_notes.append(f"Confidence below threshold: {json_result.get('confidence')}")
+                hard_rule_notes.append(
+                    f"Confidence below threshold: {json_result.get('confidence')}"
+                )
             # 2. signal is Bullish or Bearish
-            if json_result.get('signal', '').lower() not in ['bullish', 'bearish']:
+            if json_result.get("signal", "").lower() not in ["bullish", "bearish"]:
                 hard_rule_fail = True
                 hard_rule_notes.append(f"Signal not actionable: {json_result.get('signal')}")
             # 3. affected_etfs contains at least one specialized ETF
-            specialized_etfs = ['BOTZ', 'ITA', 'ICLN', 'URA', 'XAR', 'DFEN', 'PPA', 'ROBO', 'IRBO', 'ARKQ', 'SMH', 'SOXX', 'TAN', 'QCLN', 'PBW', 'LIT', 'REMX', 'URNM', 'NLR', 'VIXY', 'VXX', 'SQQQ', 'SPXS']
-            if not any(etf in specialized_etfs for etf in json_result.get('affected_etfs', [])):
+            specialized_etfs = [
+                "BOTZ",
+                "ITA",
+                "ICLN",
+                "URA",
+                "XAR",
+                "DFEN",
+                "PPA",
+                "ROBO",
+                "IRBO",
+                "ARKQ",
+                "SMH",
+                "SOXX",
+                "TAN",
+                "QCLN",
+                "PBW",
+                "LIT",
+                "REMX",
+                "URNM",
+                "NLR",
+                "VIXY",
+                "VXX",
+                "SQQQ",
+                "SPXS",
+            ]
+            if not any(etf in specialized_etfs for etf in json_result.get("affected_etfs", [])):
                 hard_rule_fail = True
                 hard_rule_notes.append("No specialized ETF in affected_etfs")
             if hard_rule_fail:
-                logger.info(f"🚫 Hard rule filter: {'; '.join(hard_rule_notes)} | {headline[:50]}...")
+                logger.info(
+                    f"🚫 Hard rule filter: {'; '.join(hard_rule_notes)} | {headline[:50]}..."
+                )
                 return None
             # Soft rules (technical scoring)
             score, notes = technical_score(rsi, macd, bollinger)
-            json_result['technical_score'] = score
-            json_result['technical_notes'] = notes
+            json_result["technical_score"] = score
+            json_result["technical_notes"] = notes
             if DEBUG_MODE:
                 logger.debug(f"🧪 Technical score: {score} | Notes: {notes}")
             # Add metadata to the analysis result
-            json_result['analysis_timestamp'] = datetime.now().isoformat()
+            json_result["analysis_timestamp"] = datetime.now().isoformat()
             # Store the analysis in memory for contextual tracking
             if memory:
                 try:
@@ -255,32 +297,33 @@ def analyze_thematic_etf_news(headline, summary, snippet="", etf_prices=None, co
                 "reasoning": "Failed to parse AI response",
                 "raw_response": result,
                 "technical_score": 0,
-                "technical_notes": "JSON parse error; no technicals"
+                "technical_notes": "JSON parse error; no technicals",
             }
     except Exception as e:
         logger.error(f"❌ Error calling OpenAI API: {e}")
         return None
 
+
 def categorize_etfs_by_sector(etfs):
     """Group ETFs by sector and return primary sector + key ETFs"""
     sector_mapping = {
         # Defense & Aerospace
-        'Defense': ['ITA', 'XAR', 'DFEN', 'PPA'],
+        "Defense": ["ITA", "XAR", "DFEN", "PPA"],
         # AI & Robotics
-        'AI': ['BOTZ', 'ROBO', 'IRBO', 'ARKQ', 'SMH', 'SOXX'],
+        "AI": ["BOTZ", "ROBO", "IRBO", "ARKQ", "SMH", "SOXX"],
         # Clean Energy & Climate
-        'CleanTech': ['ICLN', 'TAN', 'QCLN', 'PBW', 'LIT', 'REMX'],
+        "CleanTech": ["ICLN", "TAN", "QCLN", "PBW", "LIT", "REMX"],
         # Nuclear & Uranium (aligned with AI response)
-        'Uranium': ['URNM', 'NLR', 'URA'],
+        "Uranium": ["URNM", "NLR", "URA"],
         # Volatility & Inverse
-        'Volatility': ['VIXY', 'VXX', 'SQQQ', 'SPXS'],
+        "Volatility": ["VIXY", "VXX", "SQQQ", "SPXS"],
         # Traditional Sectors
-        'Energy': ['XLE'],
-        'Finance': ['XLF'],
-        'Tech': ['XLK', 'QQQ'],
-        'Market': ['SPY']
+        "Energy": ["XLE"],
+        "Finance": ["XLF"],
+        "Tech": ["XLK", "QQQ"],
+        "Market": ["SPY"],
     }
-    
+
     # Find which sectors are represented
     sector_matches = {}
     for etf in etfs:
@@ -289,20 +332,20 @@ def categorize_etfs_by_sector(etfs):
                 if sector not in sector_matches:
                     sector_matches[sector] = []
                 sector_matches[sector].append(etf)
-    
+
     # Return top 2-3 ETFs per sector, prioritizing most mentioned
     focused_etfs = []
     primary_sector = None
-    
+
     if sector_matches:
         # Find primary sector (most ETFs mentioned)
         primary_sector = max(sector_matches.keys(), key=lambda s: len(sector_matches[s]))
-        
+
         # Take top 2-3 ETFs from primary sector + 1-2 from others
         for sector, sector_etfs in sector_matches.items():
             if sector == primary_sector:
                 focused_etfs.extend(sector_etfs[:3])  # Top 3 from primary
             else:
                 focused_etfs.extend(sector_etfs[:2])  # Top 2 from others
-    
+
     return focused_etfs, primary_sector

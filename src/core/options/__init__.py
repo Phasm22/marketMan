@@ -10,8 +10,4 @@ This module contains all options trading logic including:
 
 from .scalping_strategy import OptionsScalpingStrategy, ScalpingSignal, ScalpingPosition
 
-__all__ = [
-    'OptionsScalpingStrategy',
-    'ScalpingSignal', 
-    'ScalpingPosition'
-] 
+__all__ = ["OptionsScalpingStrategy", "ScalpingSignal", "ScalpingPosition"]

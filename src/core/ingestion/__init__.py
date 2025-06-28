@@ -8,6 +8,4 @@ This module contains all data ingestion and validation logic including:
 - Historical data import
 """
 
-from .market_data import MarketData
-
-__all__ = ['MarketData'] 
+__all__ = []

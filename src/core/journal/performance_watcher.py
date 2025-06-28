@@ -18,8 +18,9 @@ NOTION_VERSION = "2022-06-28"
 HEADERS = {
     "Authorization": f"Bearer {NOTION_TOKEN}",
     "Content-Type": "application/json",
-    "Notion-Version": NOTION_VERSION
+    "Notion-Version": NOTION_VERSION,
 }
+
 
 def fetch_all_trades():
     """Fetch all trades from the Notion TRADES database."""
@@ -39,6 +40,7 @@ def fetch_all_trades():
         next_cursor = data.get("next_cursor")
     return all_trades
 
+
 def parse_trade(page):
     props = page["properties"]
     return {
@@ -50,9 +52,11 @@ def parse_trade(page):
         "Trade Date": props["Trade Date"]["date"]["start"] if props["Trade Date"]["date"] else None,
     }
 
+
 def aggregate_trades(trades):
     """Group trades by symbol and sort by date."""
     from collections import defaultdict
+
     grouped = defaultdict(list)
     for t in trades:
         if t["Symbol"]:
@@ -60,6 +64,7 @@ def aggregate_trades(trades):
     for symbol in grouped:
         grouped[symbol].sort(key=lambda x: x["Trade Date"])
     return grouped
+
 
 def compute_performance_for_symbol(trades):
     """Simple FIFO matching for buys and sells, returns realized P&L and holding period for each sell."""
@@ -76,22 +81,27 @@ def compute_performance_for_symbol(trades):
                 lot = lots[0]
                 matched_qty = min(qty_to_match, lot["qty"])
                 pnl = (sell_price - lot["price"]) * matched_qty
-                holding_days = (datetime.fromisoformat(sell_date) - datetime.fromisoformat(lot["date"])).days
-                results.append({
-                    "Symbol": t["Symbol"],
-                    "Buy Date": lot["date"],
-                    "Sell Date": sell_date,
-                    "Buy Price": lot["price"],
-                    "Sell Price": sell_price,
-                    "Quantity": matched_qty,
-                    "PnL": pnl,
-                    "Holding Days": holding_days
-                })
+                holding_days = (
+                    datetime.fromisoformat(sell_date) - datetime.fromisoformat(lot["date"])
+                ).days
+                results.append(
+                    {
+                        "Symbol": t["Symbol"],
+                        "Buy Date": lot["date"],
+                        "Sell Date": sell_date,
+                        "Buy Price": lot["price"],
+                        "Sell Price": sell_price,
+                        "Quantity": matched_qty,
+                        "PnL": pnl,
+                        "Holding Days": holding_days,
+                    }
+                )
                 lot["qty"] -= matched_qty
                 qty_to_match -= matched_qty
                 if lot["qty"] == 0:
                     lots.pop(0)
     return results
+
 
 def performance_row_exists(perf, debug=False):
     """Check if a performance row with the same Symbol, Buy Date, Sell Date, Quantity exists."""
@@ -112,6 +122,7 @@ def performance_row_exists(perf, debug=False):
         results = resp.json().get("results", [])
         return len(results) > 0
     return False
+
 
 def upsert_performance_row(perf, debug=False):
     """Add or update a row in the PERFORMANCE table for a realized trade, skipping if duplicate."""
@@ -135,10 +146,12 @@ def upsert_performance_row(perf, debug=False):
     print(f"[DEBUG] upsert_performance_row: {resp.status_code} {resp.text}")
     return resp.status_code == 200
 
+
 def main():
     import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument('--debug', action='store_true')
+    parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
     debug = args.debug
     print("🚀 MarketMan Performance Watcher started.")
@@ -156,6 +169,7 @@ def main():
             print(f"[DEBUG] Performance row: {perf}")
             upsert_performance_row(perf, debug=debug)
     print("[SUCCESS] Performance table updated.")
+
 
 if __name__ == "__main__":
     main()

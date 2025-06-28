@@ -8,4 +8,4 @@ This module contains all CLI flows and commands including:
 - Options trading commands
 """
 
-__all__ = [] 
+__all__ = []

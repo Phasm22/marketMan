@@ -11,40 +11,35 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 def create_enhanced_notion_database():
     """Create or update Notion database with enhanced properties for contextual insights"""
-    
+
     notion_token = os.getenv("NOTION_TOKEN")
-    
+
     if not notion_token:
         print("❌ NOTION_TOKEN not found in environment variables")
         return False
-    
+
     headers = {
         "Authorization": f"Bearer {notion_token}",
         "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28"
+        "Notion-Version": "2022-06-28",
     }
-    
+
     # Database properties with enhanced fields
     database_properties = {
-        "Title": {
-            "title": {}
-        },
+        "Title": {"title": {}},
         "Signal": {
             "select": {
                 "options": [
                     {"name": "Bullish", "color": "green"},
                     {"name": "Bearish", "color": "red"},
-                    {"name": "Neutral", "color": "gray"}
+                    {"name": "Neutral", "color": "gray"},
                 ]
             }
         },
-        "Confidence": {
-            "number": {
-                "format": "number"
-            }
-        },
+        "Confidence": {"number": {"format": "number"}},
         "ETFs": {
             "multi_select": {
                 "options": [
@@ -81,7 +76,7 @@ def create_enhanced_notion_database():
                     {"name": "XLF", "color": "orange"},
                     {"name": "XLK", "color": "orange"},
                     {"name": "QQQ", "color": "orange"},
-                    {"name": "SPY", "color": "orange"}
+                    {"name": "SPY", "color": "orange"},
                 ]
             }
         },
@@ -90,7 +85,7 @@ def create_enhanced_notion_database():
                 "options": [
                     {"name": "BUY", "color": "green"},
                     {"name": "SELL", "color": "red"},
-                    {"name": "HOLD", "color": "yellow"}
+                    {"name": "HOLD", "color": "yellow"},
                 ]
             }
         },
@@ -100,7 +95,7 @@ def create_enhanced_notion_database():
                     {"name": "New", "color": "blue"},
                     {"name": "Reviewed", "color": "green"},
                     {"name": "Acted On", "color": "purple"},
-                    {"name": "Archived", "color": "gray"}
+                    {"name": "Archived", "color": "gray"},
                 ]
             }
         },
@@ -116,77 +111,66 @@ def create_enhanced_notion_database():
                     {"name": "Finance", "color": "brown"},
                     {"name": "Tech", "color": "purple"},
                     {"name": "Market", "color": "default"},
-                    {"name": "Mixed", "color": "default"}
+                    {"name": "Mixed", "color": "default"},
                 ]
             }
         },
-        "Reasoning": {
-            "rich_text": {}
-        },
-        "Timestamp": {
-            "date": {}
-        },
-        "Link": {
-            "url": {}
-        },
-        "Search Term": {
-            "rich_text": {}
-        }
+        "Reasoning": {"rich_text": {}},
+        "Timestamp": {"date": {}},
+        "Link": {"url": {}},
+        "Search Term": {"rich_text": {}},
     }
-    
+
     # Try to find existing MarketMan database first
     search_response = requests.post(
         "https://api.notion.com/v1/search",
         headers=headers,
         json={
             "query": "MarketMan Energy Analysis",
-            "filter": {"property": "object", "value": "database"}
-        }
+            "filter": {"property": "object", "value": "database"},
+        },
     )
-    
+
     if search_response.status_code == 200:
         results = search_response.json().get("results", [])
         existing_db = None
-        
+
         for result in results:
             if result.get("title", [{}])[0].get("plain_text", "") == "MarketMan Energy Analysis":
                 existing_db = result
                 break
-        
+
         if existing_db:
             print(f"✅ Found existing MarketMan database: {existing_db['id']}")
             print(f"🔗 Database URL: {existing_db['url']}")
             print("\n📝 To use this database, add this to your .env file:")
             print(f"NOTION_DATABASE_ID={existing_db['id']}")
-            return existing_db['id']
-    
+            return existing_db["id"]
+
     # Create new database if not found
     print("📝 Creating new MarketMan database...")
-    
+
     # You'll need to specify a parent page - this is a placeholder
-    parent_page_id = input("Enter your Notion page ID where you want to create the database (or press Enter to skip): ").strip()
-    
+    parent_page_id = input(
+        "Enter your Notion page ID where you want to create the database (or press Enter to skip): "
+    ).strip()
+
     if not parent_page_id:
-        print("⚠️ No parent page ID provided. Please create the database manually or provide a page ID.")
+        print(
+            "⚠️ No parent page ID provided. Please create the database manually or provide a page ID."
+        )
         return False
-    
+
     create_data = {
         "parent": {"page_id": parent_page_id},
-        "title": [
-            {
-                "type": "text",
-                "text": {"content": "MarketMan Energy Analysis"}
-            }
-        ],
-        "properties": database_properties
+        "title": [{"type": "text", "text": {"content": "MarketMan Energy Analysis"}}],
+        "properties": database_properties,
     }
-    
+
     response = requests.post(
-        "https://api.notion.com/v1/databases",
-        headers=headers,
-        json=create_data
+        "https://api.notion.com/v1/databases", headers=headers, json=create_data
     )
-    
+
     if response.status_code == 200:
         database_data = response.json()
         database_id = database_data["id"]
@@ -201,103 +185,101 @@ def create_enhanced_notion_database():
         print(f"Error: {response.text}")
         return False
 
+
 def test_database_access():
     """Test access to the configured database"""
     notion_token = os.getenv("NOTION_TOKEN")
     database_id = os.getenv("NOTION_DATABASE_ID")
-    
+
     if not notion_token or not database_id:
         print("❌ Missing NOTION_TOKEN or NOTION_DATABASE_ID in .env file")
         return False
-    
+
     headers = {
         "Authorization": f"Bearer {notion_token}",
         "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28"
+        "Notion-Version": "2022-06-28",
     }
-    
+
     # Test by retrieving database info
-    response = requests.get(
-        f"https://api.notion.com/v1/databases/{database_id}",
-        headers=headers
-    )
-    
+    response = requests.get(f"https://api.notion.com/v1/databases/{database_id}", headers=headers)
+
     if response.status_code == 200:
         db_data = response.json()
         title = db_data.get("title", [{}])[0].get("plain_text", "Unknown")
         print(f"✅ Successfully connected to database: {title}")
-        
+
         # Check for required properties
         properties = db_data.get("properties", {})
-        required_props = ["Title", "Signal", "Confidence", "ETFs", "Action", "Reasoning", "Timestamp", "Link"]
-        
+        required_props = [
+            "Title",
+            "Signal",
+            "Confidence",
+            "ETFs",
+            "Action",
+            "Reasoning",
+            "Timestamp",
+            "Link",
+        ]
+
         print("\n📋 Database Properties:")
         for prop in required_props:
             if prop in properties:
                 print(f"  ✅ {prop}")
             else:
                 print(f"  ❌ {prop} (missing)")
-        
+
         return True
     else:
         print(f"❌ Failed to access database: {response.status_code}")
         print(f"Error: {response.text}")
         return False
 
+
 def create_test_entry():
     """Create a test entry to verify everything works"""
     notion_token = os.getenv("NOTION_TOKEN")
     database_id = os.getenv("NOTION_DATABASE_ID")
-    
+
     if not notion_token or not database_id:
         print("❌ Missing NOTION_TOKEN or NOTION_DATABASE_ID")
         return False
-    
+
     headers = {
         "Authorization": f"Bearer {notion_token}",
         "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28"
+        "Notion-Version": "2022-06-28",
     }
-    
+
     test_data = {
         "parent": {"database_id": database_id},
         "properties": {
             "Title": {
-                "title": [{"text": {"content": "🧪 MarketMan Test Entry - AI ETF Momentum Analysis"}}]
+                "title": [
+                    {"text": {"content": "🧪 MarketMan Test Entry - AI ETF Momentum Analysis"}}
+                ]
             },
-            "Signal": {
-                "select": {"name": "Bullish"}
-            },
-            "Confidence": {
-                "number": 8
-            },
-            "ETFs": {
-                "multi_select": [{"name": "BOTZ"}, {"name": "ROBO"}, {"name": "ARKQ"}]
-            },
-            "Sector": {
-                "select": {"name": "AI"}
-            },
-            "Action": {
-                "select": {"name": "BUY"}
-            },
+            "Signal": {"select": {"name": "Bullish"}},
+            "Confidence": {"number": 8},
+            "ETFs": {"multi_select": [{"name": "BOTZ"}, {"name": "ROBO"}, {"name": "ARKQ"}]},
+            "Sector": {"select": {"name": "AI"}},
+            "Action": {"select": {"name": "BUY"}},
             "Reasoning": {
-                "rich_text": [{"text": {"content": "Test analysis with enhanced thematic ETF coverage and contextual memory integration.\n\n🧠 MARKET MEMORY INSIGHTS:\nBOTZ has shown consecutive bullish signals over the past 3 days, indicating strong momentum building in AI/robotics sector. Institutional inflows accelerating."}}]
+                "rich_text": [
+                    {
+                        "text": {
+                            "content": "Test analysis with enhanced thematic ETF coverage and contextual memory integration.\n\n🧠 MARKET MEMORY INSIGHTS:\nBOTZ has shown consecutive bullish signals over the past 3 days, indicating strong momentum building in AI/robotics sector. Institutional inflows accelerating."
+                        }
+                    }
+                ]
             },
-            "Timestamp": {
-                "date": {"start": "2025-06-21T10:00:00.000Z"}
-            },
-            "Link": {
-                "url": "https://example.com"
-            }
-        }
+            "Timestamp": {"date": {"start": "2025-06-21T10:00:00.000Z"}},
+            "Link": {"url": "https://example.com"},
+        },
     }
-    
-    response = requests.post(
-        "https://api.notion.com/v1/pages",
-        headers=headers,
-        json=test_data
-    )
-    
+
+    response = requests.post("https://api.notion.com/v1/pages", headers=headers, json=test_data)
+
     if response.status_code == 200:
         page_data = response.json()
         print(f"✅ Test entry created successfully!")
@@ -308,12 +290,13 @@ def create_test_entry():
         print(f"Error: {response.text}")
         return False
 
+
 if __name__ == "__main__":
     import sys
-    
+
     print("🚀 MarketMan Enhanced Notion Setup")
     print("=" * 50)
-    
+
     if "--create" in sys.argv:
         create_enhanced_notion_database()
     elif "--test" in sys.argv:

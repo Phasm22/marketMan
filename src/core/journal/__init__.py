@@ -10,4 +10,4 @@ This module contains all trade journaling and analytics logic including:
 
 from .alert_batcher import AlertBatcher
 
-__all__ = ['AlertBatcher'] 
+__all__ = ["AlertBatcher"]

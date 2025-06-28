@@ -21,8 +21,9 @@ NOTION_VERSION = "2022-06-28"
 HEADERS = {
     "Authorization": f"Bearer {NOTION_TOKEN}",
     "Content-Type": "application/json",
-    "Notion-Version": NOTION_VERSION
+    "Notion-Version": NOTION_VERSION,
 }
+
 
 # --- UTILS ---
 def get_new_imports():
@@ -32,6 +33,7 @@ def get_new_imports():
     resp = requests.post(url, headers=HEADERS, json=payload)
     resp.raise_for_status()
     return resp.json().get("results", [])
+
 
 def download_file_from_notion(file_prop):
     """Download the file from Notion file property (assumes external file)"""
@@ -47,6 +49,7 @@ def download_file_from_notion(file_prop):
         f.write(r.content)
     return local_path
 
+
 def mark_import_processed(page_id, filename=None, error_message=None, debug=False):
     url = f"https://api.notion.com/v1/pages/{page_id}"
     properties = {"Status": {"select": {"name": "Processed"}}}
@@ -60,6 +63,7 @@ def mark_import_processed(page_id, filename=None, error_message=None, debug=Fals
     if debug:
         print(f"[DEBUG] mark_import_processed response: {resp.status_code} {resp.text}")
     return resp.status_code == 200
+
 
 def trade_exists_in_notion(trade, debug=False):
     """Check if a trade with the same Symbol, Action, Quantity, Price, and Trade Date exists in Notion TRADES DB."""
@@ -82,11 +86,14 @@ def trade_exists_in_notion(trade, debug=False):
         return len(results) > 0
     return False
 
+
 def add_trade_to_notion(trade, debug=False):
     """Add a single trade to the Notion TRADES database, skipping if duplicate."""
     if trade_exists_in_notion(trade, debug=debug):
         if debug:
-            print(f"[SKIP] Duplicate trade found, skipping: {trade['Symbol']} {trade['Action']} {trade['Quantity']} @ {trade['Price']} {trade['Run Date']}")
+            print(
+                f"[SKIP] Duplicate trade found, skipping: {trade['Symbol']} {trade['Action']} {trade['Quantity']} @ {trade['Price']} {trade['Run Date']}"
+            )
         return False
     if debug:
         print(f"[DEBUG] Trade fields: {trade}")
@@ -95,10 +102,10 @@ def add_trade_to_notion(trade, debug=False):
         "properties": {
             "Ticker": {"title": [{"text": {"content": trade["Symbol"]}}]},
             "Action": {"select": {"name": trade["Action"]}},
-            "Quantity": {"number": float(trade["Quantity"])} ,
-            "Price": {"number": float(trade["Price"])} ,
+            "Quantity": {"number": float(trade["Quantity"])},
+            "Price": {"number": float(trade["Price"])},
             "Trade Date": {"date": {"start": trade["Run Date"]}},
-        }
+        },
     }
     try:
         trade_value = float(trade["Quantity"]) * float(trade["Price"])
@@ -108,7 +115,9 @@ def add_trade_to_notion(trade, debug=False):
     if "Signal Confidence" in trade and trade["Signal Confidence"]:
         payload["properties"]["Signal Confidence"] = {"number": float(trade["Signal Confidence"])}
     if "Signal Reference" in trade and trade["Signal Reference"]:
-        payload["properties"]["Signal Reference"] = {"rich_text": [{"text": {"content": str(trade["Signal Reference"])}}]}
+        payload["properties"]["Signal Reference"] = {
+            "rich_text": [{"text": {"content": str(trade["Signal Reference"])}}]
+        }
     if debug:
         print(f"[DEBUG] Trade payload: {payload}")
     resp = requests.post("https://api.notion.com/v1/pages", headers=HEADERS, json=payload)
@@ -116,17 +125,20 @@ def add_trade_to_notion(trade, debug=False):
         print(f"[DEBUG] add_trade_to_notion response: {resp.status_code} {resp.text}")
     if resp.status_code == 200:
         if debug:
-            print(f"[NOTION] Added trade: {trade['Symbol']} {trade['Action']} {trade['Quantity']} @ {trade['Price']}")
+            print(
+                f"[NOTION] Added trade: {trade['Symbol']} {trade['Action']} {trade['Quantity']} @ {trade['Price']}"
+            )
         return True
     else:
         print(f"[NOTION] Failed to add trade: {resp.text}")
         return False
 
+
 # --- MAIN WORKFLOW ---
 def process_import(file_path, debug=False):
     """Parse the broker file and add trades to Notion (essentials only)"""
     print(f"[IMPORT] Processing {file_path} ... (CSV parse and import)")
-    with open(file_path, newline='') as csvfile:
+    with open(file_path, newline="") as csvfile:
         reader = csv.DictReader(csvfile)
         if debug:
             print(f"[DEBUG] CSV Header: {reader.fieldnames}")
@@ -134,7 +146,10 @@ def process_import(file_path, debug=False):
         imported_count = 0
         for row in reader:
             row_count += 1
-            row = {k.lstrip('\ufeff').strip(): (v.strip() if isinstance(v, str) else v) for k, v in row.items()}
+            row = {
+                k.lstrip("\ufeff").strip(): (v.strip() if isinstance(v, str) else v)
+                for k, v in row.items()
+            }
             if debug:
                 print(f"[DEBUG] Raw CSV row {row_count}: {row}")
             essentials = ["Run Date", "Action", "Symbol", "Quantity", "Price"]
@@ -143,7 +158,13 @@ def process_import(file_path, debug=False):
                 if debug:
                     print(f"[WARN] Skipping row {row_count} due to missing fields: {missing}")
                 continue
-            action = "Buy" if "BOUGHT" in row["Action"].upper() else "Sell" if "SOLD" in row["Action"].upper() else row["Action"]
+            action = (
+                "Buy"
+                if "BOUGHT" in row["Action"].upper()
+                else "Sell"
+                if "SOLD" in row["Action"].upper()
+                else row["Action"]
+            )
             trade = {
                 "Run Date": datetime.strptime(row["Run Date"], "%m/%d/%y").date().isoformat(),
                 "Action": action,
@@ -161,9 +182,10 @@ def process_import(file_path, debug=False):
             print(f"[DEBUG] Total rows: {row_count}, Imported: {imported_count}")
     return True
 
+
 def main():
     parser = argparse.ArgumentParser(description="MarketMan Notion Imports Watcher")
-    parser.add_argument('--debug', action='store_true', help='Enable debug logging')
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
     debug = args.debug
     print("🚀 MarketMan Notion Imports Watcher started.")
@@ -178,15 +200,21 @@ def main():
                 page_id = entry["id"]
                 props = entry["properties"]
                 file_prop = props.get("File")
-                filename = file_prop["files"][0]["name"] if file_prop and file_prop.get("files") else None
+                filename = (
+                    file_prop["files"][0]["name"] if file_prop and file_prop.get("files") else None
+                )
                 if not file_prop:
                     print(f"[WARN] No file found in import entry {page_id}")
-                    mark_import_processed(page_id, filename, error_message="No file found", debug=debug)
+                    mark_import_processed(
+                        page_id, filename, error_message="No file found", debug=debug
+                    )
                     continue
                 file_path = download_file_from_notion(file_prop)
                 if not file_path:
                     print(f"[WARN] Could not download file for entry {page_id}")
-                    mark_import_processed(page_id, filename, error_message="Could not download file", debug=debug)
+                    mark_import_processed(
+                        page_id, filename, error_message="Could not download file", debug=debug
+                    )
                     continue
                 try:
                     if process_import(file_path, debug=debug):
@@ -194,13 +222,16 @@ def main():
                         mark_import_processed(page_id, filename, debug=debug)
                     else:
                         print(f"[FAIL] Failed to process {file_path}")
-                        mark_import_processed(page_id, filename, error_message="Failed to process file", debug=debug)
+                        mark_import_processed(
+                            page_id, filename, error_message="Failed to process file", debug=debug
+                        )
                 except Exception as e:
                     print(f"[ERROR] {e}")
                     mark_import_processed(page_id, filename, error_message=str(e), debug=debug)
         except Exception as e:
             print(f"[ERROR] {e}")
         time.sleep(60)
+
 
 if __name__ == "__main__":
     main()

@@ -8,4 +8,4 @@ This module contains all backtesting and simulation logic including:
 - Strategy optimization
 """
 
-__all__ = [] 
+__all__ = []
