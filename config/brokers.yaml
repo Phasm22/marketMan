@@ -1,0 +1,111 @@
+# MarketMan Broker Configuration
+# Broker-specific configurations and API settings
+
+# Paper Trading (Default)
+paper_trading:
+  enabled: true
+  name: "Paper Trading"
+  account_type: "paper"
+  initial_balance: 100000
+  commission_per_trade: 0.0
+  margin_enabled: false
+
+# Interactive Brokers (Future)
+interactive_brokers:
+  enabled: false
+  name: "Interactive Brokers"
+  account_type: "live"
+  host: "127.0.0.1"
+  port: 7497
+  client_id: 1
+  paper_trading: false
+  
+  # API Settings
+  api_settings:
+    timeout: 30
+    retry_attempts: 3
+    retry_delay: 1
+  
+  # Order Settings
+  order_settings:
+    default_order_type: "MKT"
+    default_time_in_force: "DAY"
+    max_slippage: 0.01
+
+# TD Ameritrade (Future)
+td_ameritrade:
+  enabled: false
+  name: "TD Ameritrade"
+  account_type: "live"
+  api_key: ""  # Set in credentials
+  
+  # API Settings
+  api_settings:
+    base_url: "https://api.tdameritrade.com/v1"
+    timeout: 30
+    retry_attempts: 3
+  
+  # Order Settings
+  order_settings:
+    default_order_type: "MARKET"
+    default_time_in_force: "DAY"
+    max_slippage: 0.01
+
+# Alpaca (Future)
+alpaca:
+  enabled: false
+  name: "Alpaca"
+  account_type: "live"
+  api_key: ""  # Set in credentials
+  secret_key: ""  # Set in credentials
+  paper_trading: false
+  
+  # API Settings
+  api_settings:
+    base_url: "https://api.alpaca.markets"
+    timeout: 30
+    retry_attempts: 3
+  
+  # Order Settings
+  order_settings:
+    default_order_type: "market"
+    default_time_in_force: "day"
+    max_slippage: 0.01
+
+# Robinhood (Future)
+robinhood:
+  enabled: false
+  name: "Robinhood"
+  account_type: "live"
+  username: ""  # Set in credentials
+  password: ""  # Set in credentials
+  
+  # API Settings
+  api_settings:
+    base_url: "https://api.robinhood.com"
+    timeout: 30
+    retry_attempts: 3
+  
+  # Order Settings
+  order_settings:
+    default_order_type: "market"
+    default_time_in_force: "gfd"
+    max_slippage: 0.01
+
+# Global Broker Settings
+global_settings:
+  # Risk Management
+  max_position_size: 10000
+  max_daily_trades: 50
+  max_daily_loss: 1000
+  
+  # Order Management
+  default_quantity: 100
+  min_order_size: 1
+  max_order_size: 10000
+  
+  # Market Hours (EST)
+  market_open: "09:30"
+  market_close: "16:00"
+  pre_market_open: "04:00"
+  after_hours_close: "20:00" 

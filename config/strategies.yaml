@@ -1,0 +1,96 @@
+# MarketMan Strategy Configuration
+# Strategy-specific parameters and configurations
+
+# ETF Signal Strategy
+etf_signals:
+  name: "ETF Momentum Strategy"
+  enabled: true
+  symbols:
+    - "QQQ"
+    - "SPY"
+    - "IWM"
+    - "XLF"
+    - "XLE"
+  
+  technical_indicators:
+    rsi_period: 14
+    rsi_oversold: 30
+    rsi_overbought: 70
+    macd_fast: 12
+    macd_slow: 26
+    macd_signal: 9
+    sma_short: 20
+    sma_long: 50
+  
+  signal_filters:
+    min_volume: 1000000
+    min_price: 10.0
+    max_volatility: 0.05
+
+# News Analysis Strategy
+news_analysis:
+  name: "News Sentiment Strategy"
+  enabled: true
+  
+  keywords:
+    positive: ["bullish", "rally", "surge", "gain", "positive", "growth"]
+    negative: ["bearish", "decline", "drop", "loss", "negative", "recession"]
+    neutral: ["stable", "steady", "unchanged", "flat"]
+  
+  sentiment_weights:
+    positive: 1.0
+    negative: -1.0
+    neutral: 0.0
+  
+  time_decay:
+    half_life_hours: 24
+    max_age_hours: 168  # 1 week
+
+# Options Scalping Strategy
+options_scalping:
+  name: "QQQ/SPY Options Scalping"
+  enabled: false  # Toggle to activate
+  
+  symbols:
+    - "QQQ"
+    - "SPY"
+  
+  entry_conditions:
+    min_iv_percentile: 30
+    max_iv_percentile: 80
+    min_dte: 1
+    max_dte: 7
+    min_bid_ask_spread: 0.05
+  
+  exit_conditions:
+    profit_target_percent: 1.5
+    stop_loss_percent: 1.0
+    max_hold_time_minutes: 30
+    theta_decay_threshold: 0.1
+  
+  position_sizing:
+    max_capital_per_trade: 1000
+    max_portfolio_risk: 0.02  # 2%
+    max_correlation: 0.7
+
+# Risk Management Strategy
+risk_management:
+  name: "Dynamic Risk Management"
+  enabled: true
+  
+  position_sizing:
+    kelly_criterion_enabled: true
+    max_kelly_fraction: 0.25
+    min_position_size: 100
+    max_position_size: 10000
+  
+  stop_loss:
+    trailing_stop_enabled: true
+    trailing_stop_percent: 1.0
+    hard_stop_percent: 3.0
+  
+  portfolio_limits:
+    max_sector_exposure: 0.3
+    max_single_position: 0.1
+    max_correlation: 0.8
+    min_diversification: 5 

@@ -1,0 +1,76 @@
+# MarketMan Main Configuration
+# This file contains all user-facing tunable parameters
+
+# Application Settings
+app:
+  name: "MarketMan"
+  version: "1.0.0"
+  debug: false
+  log_level: "INFO"
+
+# Database Configuration
+database:
+  market_memory_path: "marketman_memory.db"
+  alert_batch_path: "alert_batch.db"
+  backup_enabled: true
+  backup_interval_hours: 24
+
+# Signal Processing
+signals:
+  etf:
+    enabled: true
+    update_interval_minutes: 5
+    conviction_threshold: 0.7
+    max_signals_per_day: 10
+  
+  news:
+    enabled: true
+    gpt_analysis_enabled: true
+    sentiment_threshold: 0.6
+    max_news_items_per_analysis: 50
+
+# Risk Management
+risk:
+  position_sizing_enabled: true
+  max_position_size_percent: 5.0
+  stop_loss_percent: 2.0
+  max_daily_loss_percent: 3.0
+
+# Options Trading
+options:
+  scalping_enabled: false  # Toggle to activate
+  symbols: ["QQQ", "SPY"]
+  max_trade_size: 1000
+  profit_target_percent: 1.5
+  stop_loss_percent: 1.0
+  max_trades_per_day: 5
+
+# Performance Monitoring
+performance:
+  tracking_enabled: true
+  update_interval_minutes: 15
+  dashboard_enabled: true
+
+# Integrations
+integrations:
+  notion:
+    enabled: true
+    database_id: ""  # Set in credentials
+    update_interval_minutes: 10
+  
+  gmail:
+    enabled: true
+    credentials_path: "config/credentials/gmail_credentials.json"
+    token_path: "config/credentials/gmail_token.pickle"
+    poll_interval_minutes: 5
+  
+  pushover:
+    enabled: true
+    api_token: ""  # Set in credentials
+
+# Logging
+logging:
+  file_enabled: true
+  log_file: "logs/marketman.log"
+  max_file_size_mb: 10
+  backup_count: 5 
