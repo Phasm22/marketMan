@@ -10,10 +10,8 @@ app:
 
 # Database Configuration
 database:
-  market_memory_path: "marketman_memory.db"
-  alert_batch_path: "alert_batch.db"
-  backup_enabled: true
-  backup_interval_hours: 24
+  type: sqlite
+  path: data/marketman.db
 
 # Signal Processing
 signals:
@@ -35,6 +33,9 @@ risk:
   max_position_size_percent: 5.0
   stop_loss_percent: 2.0
   max_daily_loss_percent: 3.0
+  max_position_size: 0.02  # 2% of portfolio
+  max_daily_loss: 0.05     # 5% daily loss limit
+  max_kelly_fraction: 0.25  # Maximum Kelly Criterion allocation
 
 # Options Trading
 options:
@@ -73,4 +74,129 @@ logging:
   file_enabled: true
   log_file: "logs/marketman.log"
   max_file_size_mb: 10
-  backup_count: 5 
+  backup_count: 5
+
+# Alert Configuration
+alerts:
+  batch_strategy: smart_batch
+  notification_channels: [pushover, notion]
+  max_daily_alerts: 10
+
+# News Ingestion Configuration
+news_ingestion:
+  # Daily budget controls
+  max_daily_headlines: 20
+  max_daily_ai_calls: 50
+  max_monthly_ai_budget: 20.00  # USD
+  
+  # Market hours (EST)
+  market_hours:
+    start: "09:30"
+    end: "16:00"
+    timezone: "America/New_York"
+  
+  # Keywords for pre-filtering (high-impact terms)
+  keywords:
+    - "ETF"
+    - "SPY"
+    - "QQQ"
+    - "DIA"
+    - "interest rate"
+    - "Fed"
+    - "Federal Reserve"
+    - "earnings"
+    - "cut"
+    - "downgrade"
+    - "upgrade"
+    - "SEC"
+    - "lawsuit"
+    - "merger"
+    - "acquisition"
+    - "IPO"
+    - "bankruptcy"
+    - "dividend"
+    - "split"
+    - "guidance"
+    - "forecast"
+    - "analyst"
+    - "rating"
+    - "target"
+    - "volatility"
+    - "VIX"
+    - "VIXY"
+    - "VXX"
+  
+  # Tracked tickers (ETFs we care about)
+  tracked_tickers:
+    # AI & Tech
+    - "BOTZ"
+    - "ROBO"
+    - "IRBO"
+    - "ARKQ"
+    - "SMH"
+    - "SOXX"
+    # Defense & Aerospace
+    - "ITA"
+    - "XAR"
+    - "DFEN"
+    - "PPA"
+    # Nuclear & Uranium
+    - "URNM"
+    - "NLR"
+    - "URA"
+    # Clean Energy
+    - "ICLN"
+    - "TAN"
+    - "QCLN"
+    - "PBW"
+    - "LIT"
+    - "REMX"
+    # Volatility & Inverse
+    - "VIXY"
+    - "VXX"
+    - "SQQQ"
+    - "SPXS"
+    # Major indices
+    - "SPY"
+    - "QQQ"
+    - "DIA"
+    - "IWM"
+  
+  # Batching configuration
+  batching:
+    max_headlines_per_batch: 5
+    min_batch_size: 2
+    max_batch_wait_time: 300  # 5 minutes
+  
+  # Duplicate detection
+  duplicate_detection:
+    enabled: true
+    time_window_hours: 24
+    similarity_threshold: 0.8
+
+# API Rate Limits
+api_limits:
+  finnhub:
+    calls_per_minute: 60
+    calls_per_day: 1000
+  newdata:
+    calls_per_day: 200
+  newsapi:
+    calls_per_day: 100
+    articles_per_credit: 10
+  openai:
+    max_tokens_per_request: 1000
+    max_requests_per_day: 50
+
+# Filtering rules
+filters:
+  exclude_broad_market_unless_no_alternative: true
+  require_specialized_etf_preference: true
+  max_etfs_per_signal: 5
+
+# Additional settings
+min_confidence_threshold: 7
+min_mentions_for_etf: 2
+technical_analysis:
+  enabled: true
+  indicators: ["rsi", "macd", "bollinger"] 

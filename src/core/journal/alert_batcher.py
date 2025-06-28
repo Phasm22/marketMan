@@ -12,8 +12,8 @@ from enum import Enum
 import hashlib
 import logging
 
-from src.core.database.db_manager import alert_batch_db
-from src.integrations.pushover_utils import send_pushover_notification
+from ..database.db_manager import alert_batch_db
+from integrations.pushover_utils import send_pushover_notification
 
 logger = logging.getLogger(__name__)
 
@@ -278,7 +278,7 @@ ETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
         if project_root not in sys.path:
             sys.path.insert(0, project_root)
 
-        from src.integrations.pushover_utils import send_pushover_notification
+        from integrations.pushover_utils import send_pushover_notification
 
         alerts = self.get_pending_alerts(strategy)
         if not alerts:

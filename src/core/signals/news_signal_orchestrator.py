@@ -10,20 +10,20 @@ from datetime import datetime
 # Add project root to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.integrations.pushover_utils import send_energy_alert, send_system_alert
-from src.core.database.market_memory import MarketMemory
-from src.core.journal.alert_batcher import queue_alert, process_alert_queue, BatchStrategy
+from integrations.pushover_utils import send_energy_alert, send_system_alert
+from core.database.market_memory import MarketMemory
+from core.journal.alert_batcher import queue_alert, process_alert_queue, BatchStrategy
 
 # Import refactored modules
-from src.core.signals.etf_signal_engine import (
+from core.signals.etf_signal_engine import (
     analyze_thematic_etf_news,
     generate_tactical_explanation,
     categorize_etfs_by_sector,
 )
-from src.core.ingestion.market_data import get_market_snapshot
-from src.integrations.gmail_poller import GmailPoller
-from src.integrations.notion_reporter import NotionReporter
-from src.core.journal.report_consolidator import create_consolidated_signal_report
+from core.ingestion.market_data import get_market_snapshot
+from integrations.gmail_poller import GmailPoller
+from integrations.notion_reporter import NotionReporter
+from core.journal.report_consolidator import create_consolidated_signal_report
 
 # Set up logging with debug control
 DEBUG_MODE = os.getenv("DEBUG", "false").lower() == "true"

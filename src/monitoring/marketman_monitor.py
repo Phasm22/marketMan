@@ -16,9 +16,9 @@ from datetime import datetime
 # Add project root to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.integrations.pushover_utils import send_system_alert, send_pushover_notification
-from src.core.signals.news_gpt_analyzer import NewsAnalyzer
-from src.integrations.gmail_organizer import GmailOrganizer
+from integrations.pushover_utils import send_system_alert, send_pushover_notification
+from core.signals.news_gpt_analyzer import NewsAnalyzer
+from integrations.gmail_organizer import GmailOrganizer
 import logging
 
 # Set up logging

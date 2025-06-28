@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 
-from src.core.utils import get_config, is_feature_enabled
+from ..utils import get_config, is_feature_enabled
 
 
 logger = logging.getLogger(__name__)

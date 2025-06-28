@@ -15,9 +15,9 @@ import sys
 # Add project root to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.integrations.pushover_utils import send_energy_alert, send_system_alert
-from src.core.database.market_memory import MarketMemory
-from src.core.journal.alert_batcher import queue_alert, process_alert_queue, BatchStrategy
+from integrations.pushover_utils import send_energy_alert, send_system_alert
+from core.database.market_memory import MarketMemory
+from core.journal.alert_batcher import queue_alert, process_alert_queue, BatchStrategy
 
 # Set up logging with debug control
 DEBUG_MODE = os.getenv("DEBUG", "false").lower() == "true"

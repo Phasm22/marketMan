@@ -12,7 +12,7 @@ import logging
 from typing import Dict, Optional, Tuple
 from dataclasses import dataclass
 
-from src.core.utils import get_config
+from ..utils import get_config
 
 
 logger = logging.getLogger(__name__)
