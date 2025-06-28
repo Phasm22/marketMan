@@ -2,18 +2,20 @@
 ETF Analysis Engine - Core AI analysis logic for thematic ETF opportunities
 """
 import os
-import openai
+from openai import OpenAI
 import json
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Set up logging
 DEBUG_MODE = os.getenv("DEBUG", "false").lower() == "true"
 logger = logging.getLogger(__name__)
+
+# Initialize OpenAI client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 def generate_tactical_explanation(analysis_result, article_title):
@@ -64,14 +66,14 @@ That {signal.upper()} signal translates to:
 Use proper financial terminology: entry/exit levels, position sizing, risk-reward ratios, stop-losses, profit targets. Be specific with actionable price levels and percentages. Maximum 250 words.
 """
 
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,  # Slightly higher for more personality
             max_tokens=400,
         )
 
-        tactical_explanation = response["choices"][0]["message"]["content"].strip()
+        tactical_explanation = response.choices[0].message.content.strip()
         logger.info(f"💡 Generated tactical explanation ({len(tactical_explanation)} chars)")
         return tactical_explanation
 
@@ -200,13 +202,13 @@ def analyze_thematic_etf_news(
     prompt = build_analysis_prompt(headline, summary, snippet, etf_prices, contextual_insight)
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,  # Lower temperature for more consistent JSON
         )
 
-        result = response["choices"][0]["message"]["content"].strip()
+        result = response.choices[0].message.content.strip()
 
         if DEBUG_MODE:
             logger.debug(f"🤖 MarketMan RESPONSE: {result}")
