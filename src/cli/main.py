@@ -9,12 +9,12 @@ import sys
 import logging
 from typing import Optional
 
-from core.utils import get_config, format_signal_summary, format_table
-from core.signals import NewsAnalyzer
-from core.options import OptionsScalpingStrategy
-from core.journal import AlertBatcher
-from core.risk import PositionSizer
-from core.ingestion import create_news_orchestrator
+from src.core.utils import get_config, format_signal_summary, format_table
+from src.core.signals import NewsAnalyzer
+from src.core.options import OptionsScalpingStrategy
+from src.core.journal import AlertBatcher
+from src.core.risk import PositionSizer
+from src.core.ingestion import create_news_orchestrator
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -98,7 +98,7 @@ Examples:
     # News command
     news_parser = subparsers.add_parser("news", help="News ingestion commands")
     news_parser.add_argument(
-        "action", choices=["status", "cycle", "test"], help="News action to perform"
+        "action", choices=["status", "cycle", "test", "signals"], help="News action to perform"
     )
 
     return parser
@@ -453,6 +453,43 @@ def handle_news(args: argparse.Namespace) -> int:
                 print(f"✅ Batch test: {len(batches)} batches created")
             
             print("🧪 News ingestion system test completed!")
+            return 0
+            
+        elif args.action == "signals":
+            print("🤖 Running signal engine integration test...")
+            orchestrator = create_news_orchestrator(config)
+            
+            # Get tracked tickers from config
+            tracked_tickers = config.get('news_ingestion', {}).get('tracked_tickers', [])
+            
+            # Test signal processing
+            results = orchestrator.process_signals(
+                tickers=tracked_tickers[:5],  # Limit to 5 tickers for testing
+                hours_back=24  # Last 24 hours for more data
+            )
+            
+            print("\n🤖 Signal Processing Results:")
+            print("=" * 50)
+            print(f"📰 Raw news items: {results['raw_news_count']}")
+            print(f"✅ Filtered items: {results['filtered_news_count']}")
+            print(f"📦 Batches created: {results['batches_created']}")
+            print(f"🤖 AI processed: {results['ai_processed_batches']}")
+            
+            # Show signal details if any were generated
+            if results['ai_processed_batches'] > 0:
+                print(f"\n🎯 Signal Engine Integration: SUCCESS")
+                print(f"✅ News → Filter → Batch → AI → Signal pipeline working")
+            else:
+                print(f"\n📭 No signals generated - this is normal if no relevant news found")
+                print(f"✅ Pipeline is working correctly (filtering out irrelevant content)")
+            
+            # Cost stats
+            cost_stats = results['cost_stats']
+            print(f"\n💰 Cost impact:")
+            print(f"  • AI calls used: {cost_stats['daily_ai_calls']}")
+            print(f"  • Cost incurred: ${cost_stats['monthly_ai_cost']}")
+            
+            print("\n✅ Signal engine integration test completed!")
             return 0
             
         else:

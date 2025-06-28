@@ -14,6 +14,9 @@ from .news_sources.finnhub import create_finnhub_source
 from .news_sources.newsapi import create_newsapi_source
 from .news_sources.newdata import create_newdata_source
 
+# Import ETF signal engine for batch analysis
+from ..signals.etf_signal_engine import analyze_news_batch
+
 logger = logging.getLogger(__name__)
 
 
@@ -79,7 +82,7 @@ class NewsIngestionOrchestrator:
         
         return sources
     
-    def process_news_cycle(self, tickers: List[str] = None, hours_back: int = 24) -> Dict:
+    def process_news_cycle(self, tickers: Optional[List[str]] = None, hours_back: int = 24) -> Dict:
         """
         Complete news processing cycle with cost controls
         
@@ -116,9 +119,10 @@ class NewsIngestionOrchestrator:
         logger.info(f"✅ News cycle complete: {results['ai_processed_batches']} batches processed with AI")
         return results
     
-    def _fetch_news_from_sources(self, tickers: List[str] = None, hours_back: int = 24) -> List[RawNewsItem]:
+    def _fetch_news_from_sources(self, tickers: Optional[List[str]] = None, hours_back: int = 24) -> List[RawNewsItem]:
         """Fetch news from all configured sources"""
-        logger.info(f"📰 Fetching news for {len(tickers) if tickers else 'all'} tickers")
+        tickers = tickers or []
+        logger.info(f"📰 Fetching news for {len(tickers)} tickers")
         
         try:
             raw_news = self.source_manager.fetch_all_news(
@@ -211,22 +215,32 @@ class NewsIngestionOrchestrator:
         return ai_results
     
     def _analyze_batch_with_ai(self, batch: NewsBatch) -> Optional[Dict]:
-        """Analyze a news batch with AI (placeholder for now)"""
-        # This will be implemented to call the ETF signal engine
-        # For now, return a placeholder result
-        
-        return {
-            "batch_id": batch.batch_id,
-            "processed_at": datetime.now().isoformat(),
-            "items_count": batch.batch_size,
-            "common_tickers": batch.common_tickers,
-            "common_keywords": batch.common_keywords,
-            "analysis_result": {
-                "signal": "Neutral",
-                "confidence": 5,
-                "reasoning": "Batch analysis placeholder"
-            }
-        }
+        """Analyze a news batch with the ETF signal engine"""
+        try:
+            # Call the ETF signal engine for batch analysis
+            analysis_result = analyze_news_batch(
+                news_batch=batch,
+                etf_prices=None,  # TODO: Add real-time ETF prices
+                contextual_insight=None,  # TODO: Add memory context
+                memory=None  # TODO: Add MarketMemory instance
+            )
+            
+            if analysis_result:
+                # Add batch metadata
+                analysis_result["batch_id"] = batch.batch_id
+                analysis_result["processed_at"] = datetime.now().isoformat()
+                analysis_result["items_count"] = batch.batch_size
+                analysis_result["source_headlines"] = [item.title for item in batch.items]
+                
+                logger.info(f"✅ Batch {batch.batch_id} analyzed successfully: {analysis_result.get('signal', 'Unknown')} signal")
+                return analysis_result
+            else:
+                logger.info(f"🚫 Batch {batch.batch_id} analysis returned no actionable signal")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Error analyzing batch {batch.batch_id} with ETF signal engine: {e}")
+            return None
     
     def _get_cost_stats(self) -> Dict:
         """Get current cost statistics"""
@@ -256,6 +270,32 @@ class NewsIngestionOrchestrator:
                 "keywords_count": len(self.news_config.get('keywords', []))
             }
         }
+    
+    def process_signals(self, tickers: Optional[List[str]] = None, hours_back: int = 24) -> Dict:
+        """
+        Process news and generate signals using the complete pipeline
+        
+        Args:
+            tickers: Optional list of tickers to focus on
+            hours_back: How many hours back to fetch news
+            
+        Returns:
+            Dict with processing results and signal statistics
+        """
+        logger.info("🤖 Starting signal processing pipeline")
+        
+        # Run complete news cycle
+        cycle_results = self.process_news_cycle(tickers, hours_back)
+        
+        # Get AI results from the cycle
+        ai_results = cycle_results.get('ai_processed_batches', 0)
+        
+        if ai_results > 0:
+            logger.info(f"✅ Signal processing complete: {ai_results} signals generated")
+        else:
+            logger.info("📭 No signals generated in this cycle")
+        
+        return cycle_results
 
 
 def create_news_orchestrator(config: Dict) -> NewsIngestionOrchestrator:

@@ -7,6 +7,7 @@ import json
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
+from typing import List, Dict, Optional, Tuple
 
 load_dotenv()
 
@@ -351,3 +352,180 @@ def categorize_etfs_by_sector(etfs):
                 focused_etfs.extend(sector_etfs[:2])  # Top 2 from others
 
     return focused_etfs, primary_sector
+
+
+def analyze_news_batch(news_batch, etf_prices=None, contextual_insight=None, memory=None):
+    """
+    Analyze a batch of news items for thematic ETF opportunities.
+    Processes multiple headlines together for more comprehensive analysis.
+    
+    Args:
+        news_batch: NewsBatch object containing multiple news items
+        etf_prices: Optional dict of current ETF prices
+        contextual_insight: Optional contextual information from memory
+        memory: Optional MarketMemory instance for storing results
+    
+    Returns:
+        Dict containing batch analysis results
+    """
+    if not news_batch or not news_batch.items:
+        logger.warning("⚠️ Empty news batch provided")
+        return None
+    
+    logger.info(f"🤖 Analyzing news batch: {news_batch.get_summary()}")
+    
+    # Build batch analysis prompt
+    prompt = build_batch_analysis_prompt(news_batch, etf_prices, contextual_insight)
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,  # Lower temperature for more consistent JSON
+        )
+        
+        result = response.choices[0].message.content.strip()
+        
+        if DEBUG_MODE:
+            logger.debug(f"🤖 Batch analysis response: {result}")
+        else:
+            logger.debug(f"🤖 Batch analysis response received ({len(result)} chars)")
+        
+        # Parse JSON response
+        result = result.replace("```json", "").replace("```", "").strip()
+        try:
+            json_result = json.loads(result)
+            
+            # Apply hard rules to batch analysis
+            if not _validate_batch_analysis(json_result):
+                logger.info(f"🚫 Batch analysis failed validation: {news_batch.batch_id}")
+                return None
+            
+            # Add metadata
+            json_result["batch_id"] = news_batch.batch_id
+            json_result["batch_size"] = news_batch.batch_size
+            json_result["common_tickers"] = news_batch.common_tickers
+            json_result["common_keywords"] = news_batch.common_keywords
+            json_result["analysis_timestamp"] = datetime.now().isoformat()
+            json_result["source_headlines"] = [item.title for item in news_batch.items]
+            
+            # Store in memory if available
+            if memory:
+                try:
+                    memory.store_signal(json_result, f"Batch: {news_batch.batch_id}")
+                    logger.debug("💾 Batch analysis stored in MarketMemory")
+                except Exception as mem_error:
+                    logger.warning(f"⚠️ Failed to store batch analysis in memory: {mem_error}")
+            
+            logger.info(f"✅ Batch analysis complete: {json_result.get('signal', 'Unknown')} signal, confidence {json_result.get('confidence', 0)}")
+            return json_result
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ Failed to parse batch analysis response as JSON: {e}")
+            if DEBUG_MODE:
+                logger.error(f"Raw response: {result}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"❌ Error calling OpenAI API for batch analysis: {e}")
+        return None
+
+
+def build_batch_analysis_prompt(news_batch, etf_prices=None, contextual_insight=None):
+    """Build comprehensive analysis prompt for a batch of news items"""
+    # Build ETF price context
+    price_context = ""
+    if etf_prices:
+        price_context = "\n\n📊 LIVE MARKET SNAPSHOT:\n"
+        for symbol, data in etf_prices.items():
+            change_sign = "+" if data["change_pct"] >= 0 else ""
+            trend_emoji = "📈" if data["change_pct"] > 0 else "📉" if data["change_pct"] < 0 else "➖"
+            price_context += f"• {symbol} ({data.get('name', symbol)}): ${data['price']} ({change_sign}{data['change_pct']}%) {trend_emoji}\n"
+        price_context += "\nUse this real-time data to inform your strategic analysis.\n"
+    
+    # Build news batch content
+    news_content = news_batch.get_combined_text()
+    
+    return f"""
+You are MarketMan — a tactical ETF strategist focused on identifying high-momentum opportunities in defense, AI, energy, clean tech, and volatility hedging. Your job is to analyze a BATCH of related news items and identify the strongest ETF opportunities.
+
+**CRITICAL ETF SELECTION RULES:**
+• Only recommend specialized thematic ETFs (BOTZ, ITA, ICLN, URA, etc.)
+• AVOID broad-market funds (XLK, QQQ, VTI, SPY) unless no pure-play alternatives exist
+• Focus on ETFs with <$5B AUM that offer targeted sector exposure
+• Prioritize ETFs that could appear in multiple analyses today for momentum confirmation
+
+**BATCH ANALYSIS APPROACH:**
+• Look for CONFIRMATION across multiple headlines (stronger signal)
+• Identify EMERGING TRENDS from related news items
+• Focus on the MOST ACTIONABLE opportunities in the batch
+• Consider the COMBINED IMPACT of all headlines on specific sectors
+
+🧠 PATTERN MEMORY:
+{contextual_insight or 'None'}
+
+📊 MARKET SNAPSHOT:
+{price_context or 'No price data'}
+
+📰 NEWS BATCH ({news_batch.batch_size} items):
+{news_content}
+
+**BATCH ANALYSIS TASK:**
+Analyze this batch of related news items to determine if there's a STRONG, ACTIONABLE ETF opportunity. Look for:
+1. **Confirmation patterns** - multiple headlines supporting the same thesis
+2. **Emerging trends** - new developments that could drive sector momentum
+3. **Specific catalysts** - concrete events that could move ETF prices
+4. **Sector focus** - which specialized ETF sectors are most affected
+
+If this batch does NOT contain actionable ETF opportunities, return:
+{{"relevance": "not_financial", "confidence": 0}}
+
+Otherwise, return:
+{{
+  "relevance": "financial",
+  "sector": "Defense|AI|CleanTech|Volatility|Uranium|Broad Market",
+  "signal": "Bullish|Bearish|Neutral",
+  "confidence": 1-10,
+  "affected_etfs": ["ITA", "XAR", "ICLN", "BOTZ", "URA", etc],
+  "reasoning": "Comprehensive analysis of the news batch and its ETF implications",
+  "market_impact": "Expected impact on specialized ETF sectors",
+  "price_action": "Expected movements in focused ETF universe",
+  "strategic_advice": "Tactical recommendations based on batch analysis",
+  "coaching_tone": "Professional insight with specialized ETF momentum focus",
+  "risk_factors": "Key risks specific to thematic/sector exposure",
+  "opportunity_thesis": "Why this batch creates a strong ETF opportunity",
+  "theme_category": "AI/Robotics|Defense/Aerospace|CleanTech/Climate|Volatility/Hedge|Nuclear/Uranium",
+  "batch_insights": "Key insights from analyzing multiple headlines together",
+  "confirmation_strength": "How strongly the batch confirms the signal (1-10)"
+}}
+
+**REMEMBER:** This is a BATCH analysis - look for patterns and confirmation across multiple headlines. The signal should be stronger if multiple headlines support the same thesis.
+"""
+
+
+def _validate_batch_analysis(analysis_result):
+    """Validate batch analysis results against hard rules"""
+    # Check confidence threshold
+    if analysis_result.get("confidence", 0) < 7:
+        logger.debug(f"Batch confidence below threshold: {analysis_result.get('confidence')}")
+        return False
+    
+    # Check signal type
+    signal = analysis_result.get("signal", "").lower()
+    if signal not in ["bullish", "bearish"]:
+        logger.debug(f"Batch signal not actionable: {signal}")
+        return False
+    
+    # Check for specialized ETFs
+    specialized_etfs = [
+        "BOTZ", "ITA", "ICLN", "URA", "XAR", "DFEN", "PPA", "ROBO", "IRBO", "ARKQ",
+        "SMH", "SOXX", "TAN", "QCLN", "PBW", "LIT", "REMX", "URNM", "NLR", "VIXY",
+        "VXX", "SQQQ", "SPXS"
+    ]
+    
+    affected_etfs = analysis_result.get("affected_etfs", [])
+    if not any(etf in specialized_etfs for etf in affected_etfs):
+        logger.debug("Batch analysis contains no specialized ETFs")
+        return False
+    
+    return True
