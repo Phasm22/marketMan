@@ -16,35 +16,97 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class NewsBatch:
-    """A batch of related news items for AI processing"""
+    """A batch of related news items for AI processing with multi-source validation"""
     items: List[NewsItem]
     batch_id: str
     created_at: datetime
     common_tickers: List[str]
     common_keywords: List[str]
     batch_size: int
+    # Multi-source validation metadata
+    source_agreement_score: float = 0.0  # How much sources agree (0-1)
+    contradiction_flag: bool = False  # True if sources contradict each other
+    avg_source_weight: float = 0.0  # Average source reliability weight
+    avg_relevance_score: float = 0.0  # Average relevance score
+    avg_sentiment_score: float = 0.0  # Average sentiment score
+    batch_quality_score: float = 0.0  # Overall batch quality (0-1)
+    source_diversity: int = 0  # Number of unique sources
+    sentiment_consistency: float = 0.0  # How consistent sentiment is across sources
     
     def __post_init__(self):
         self.batch_size = len(self.items)
+        # Calculate multi-source validation metrics
+        self._calculate_validation_metrics()
+    
+    def _calculate_validation_metrics(self):
+        """Calculate multi-source validation metrics for the batch"""
+        if not self.items:
+            return
+        
+        # Source diversity
+        unique_sources = set(item.source for item in self.items)
+        self.source_diversity = len(unique_sources)
+        
+        # Average scores
+        self.avg_source_weight = sum(item.get_source_weight() for item in self.items) / len(self.items)
+        self.avg_relevance_score = sum(item.relevance_score for item in self.items) / len(self.items)
+        self.avg_sentiment_score = sum(item.sentiment_score for item in self.items) / len(self.items)
+        
+        # Sentiment consistency
+        sentiment_values = [item.sentiment_score for item in self.items if abs(item.sentiment_score) > 0.1]
+        if len(sentiment_values) > 1:
+            # Calculate standard deviation of sentiment (lower = more consistent)
+            mean_sentiment = sum(sentiment_values) / len(sentiment_values)
+            variance = sum((s - mean_sentiment) ** 2 for s in sentiment_values) / len(sentiment_values)
+            std_dev = variance ** 0.5
+            # Convert to consistency score (0-1, higher = more consistent)
+            self.sentiment_consistency = max(0, 1 - std_dev)
+        else:
+            self.sentiment_consistency = 1.0  # Single sentiment or no sentiment
+        
+        # Source agreement (simplified - in production, use more sophisticated analysis)
+        # For now, we'll use sentiment consistency as a proxy for source agreement
+        self.source_agreement_score = self.sentiment_consistency
+        
+        # Contradiction detection
+        positive_sentiments = [s for s in sentiment_values if s > 0.2]
+        negative_sentiments = [s for s in sentiment_values if s < -0.2]
+        self.contradiction_flag = len(positive_sentiments) > 0 and len(negative_sentiments) > 0
+        
+        # Overall batch quality score
+        quality_factors = [
+            self.avg_source_weight / 5.0,  # Normalize source weight
+            self.avg_relevance_score,
+            self.sentiment_consistency,
+            min(self.source_diversity / 3.0, 1.0),  # Prefer diverse sources but cap at 3
+            1.0 if not self.contradiction_flag else 0.5  # Penalize contradictions
+        ]
+        self.batch_quality_score = sum(quality_factors) / len(quality_factors)
     
     def get_combined_text(self) -> str:
-        """Get combined text for AI analysis"""
+        """Get combined text for AI analysis with source metadata"""
         combined = []
         for item in self.items:
+            combined.append(f"Source: {item.source} (Priority: {item.source_priority}, Category: {item.source_category})")
             combined.append(f"Title: {item.title}")
             combined.append(f"Content: {item.content}")
             combined.append(f"Tickers: {', '.join(item.tickers)}")
             combined.append(f"Keywords: {', '.join(item.keywords)}")
+            combined.append(f"Sentiment: {item.sentiment_score:.2f}, Relevance: {item.relevance_score:.2f}")
             combined.append("---")
         return "\n".join(combined)
     
     def get_summary(self) -> str:
-        """Get a summary of the batch for logging"""
+        """Get a summary of the batch for logging with validation metrics"""
         tickers_str = ", ".join(self.common_tickers[:3])
         if len(self.common_tickers) > 3:
             tickers_str += f" (+{len(self.common_tickers) - 3} more)"
         
-        return f"Batch {self.batch_id}: {self.batch_size} items, Tickers: {tickers_str}"
+        validation_info = f"Quality: {self.batch_quality_score:.2f}, Sources: {self.source_diversity}"
+        if self.contradiction_flag:
+            validation_info += ", ⚠️ Contradictions"
+        
+        return f"Batch {self.batch_id}: {self.batch_size} items, Tickers: {tickers_str} ({validation_info})"
 
 
 class NewsBatcher:
@@ -160,7 +222,7 @@ class NewsBatcher:
                 return None
     
     def _create_batch(self, group_key: str, items: List[NewsItem]) -> NewsBatch:
-        """Create a new NewsBatch from items"""
+        """Create a new NewsBatch from items with multi-source validation"""
         # Find common characteristics
         all_tickers = set()
         all_keywords = set()
@@ -178,6 +240,7 @@ class NewsBatcher:
             common_tickers=list(all_tickers),
             common_keywords=list(all_keywords),
             batch_size=len(items)
+            # Multi-source validation metrics will be calculated in __post_init__
         )
     
     def _is_batch_ready(self, batch: NewsBatch) -> bool:

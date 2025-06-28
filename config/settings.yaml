@@ -173,6 +173,39 @@ news_ingestion:
     enabled: true
     time_window_hours: 24
     similarity_threshold: 0.8
+  
+  # Multi-source validation
+  multi_source_validation:
+    enabled: true
+    source_weights:
+      "Reuters": 5
+      "Bloomberg": 5
+      "Financial Times": 5
+      "CNBC": 4
+      "MarketWatch": 4
+      "Yahoo Finance": 3
+      "Seeking Alpha": 3
+      "TechCrunch": 3
+      "Ars Technica": 2
+      "unknown": 1
+    source_categories:
+      "Reuters": "financial"
+      "Bloomberg": "financial"
+      "Financial Times": "financial"
+      "CNBC": "financial"
+      "MarketWatch": "financial"
+      "Yahoo Finance": "financial"
+      "Seeking Alpha": "financial"
+      "TechCrunch": "tech"
+      "Ars Technica": "tech"
+      "unknown": "general"
+  
+  # Advanced filtering
+  advanced_filtering:
+    min_relevance_score: 0.3
+    min_sentiment_strength: 0.2
+    require_multiple_tickers: false
+    min_ticker_count: 1
 
 # API Rate Limits
 api_limits:

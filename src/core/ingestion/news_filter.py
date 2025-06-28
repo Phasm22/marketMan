@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class NewsItem:
-    """Standardized news item structure"""
+    """Standardized news item structure with enhanced source tracking"""
     title: str
     content: str
     source: str
@@ -24,16 +24,36 @@ class NewsItem:
     tickers: List[str]
     keywords: List[str]
     hash_id: str
+    source_priority: int = 1  # Higher number = higher priority/reliability
+    source_category: str = "general"  # financial, tech, general, etc.
+    sentiment_score: float = 0.0  # Pre-calculated sentiment (-1 to 1)
+    relevance_score: float = 0.0  # Relevance to tracked tickers/keywords (0 to 1)
     
     def __post_init__(self):
         if not self.hash_id:
             # Create hash from title + content for duplicate detection
             content_str = f"{self.title}{self.content}"
             self.hash_id = hashlib.md5(content_str.encode()).hexdigest()
+    
+    def get_source_weight(self) -> float:
+        """Get source weight based on priority and category"""
+        base_weight = self.source_priority
+        
+        # Adjust weight based on source category
+        category_weights = {
+            "financial": 1.2,
+            "tech": 1.1,
+            "general": 1.0,
+            "blog": 0.8,
+            "social": 0.6
+        }
+        
+        category_multiplier = category_weights.get(self.source_category, 1.0)
+        return base_weight * category_multiplier
 
 
 class NewsFilter:
-    """Intelligent news filtering to reduce AI API costs"""
+    """Intelligent news filtering to reduce AI API costs with multi-source validation"""
     
     def __init__(self, config: Dict):
         self.config = config
@@ -45,21 +65,60 @@ class NewsFilter:
         self.keywords = set(self.news_config.get('keywords', []))
         self.market_hours = self.news_config.get('market_hours', {})
         
+        # Multi-source validation config
+        self.validation_config = self.news_config.get('multi_source_validation', {})
+        self.enable_source_validation = self.validation_config.get('enabled', True)
+        self.source_weights = self.validation_config.get('source_weights', {
+            "Reuters": 5,
+            "Bloomberg": 5,
+            "Financial Times": 5,
+            "CNBC": 4,
+            "MarketWatch": 4,
+            "Yahoo Finance": 3,
+            "Seeking Alpha": 3,
+            "TechCrunch": 3,
+            "Ars Technica": 2,
+            "unknown": 1
+        })
+        self.source_categories = self.validation_config.get('source_categories', {
+            "Reuters": "financial",
+            "Bloomberg": "financial", 
+            "Financial Times": "financial",
+            "CNBC": "financial",
+            "MarketWatch": "financial",
+            "Yahoo Finance": "financial",
+            "Seeking Alpha": "financial",
+            "TechCrunch": "tech",
+            "Ars Technica": "tech",
+            "unknown": "general"
+        })
+        
         # Duplicate detection
         self.duplicate_config = self.news_config.get('duplicate_detection', {})
         self.duplicate_enabled = self.duplicate_config.get('enabled', True)
         self.duplicate_window_hours = self.duplicate_config.get('time_window_hours', 24)
         self.similarity_threshold = self.duplicate_config.get('similarity_threshold', 0.8)
         
+        # Advanced filtering
+        self.advanced_config = self.news_config.get('advanced_filtering', {})
+        self.min_relevance_score = self.advanced_config.get('min_relevance_score', 0.3)
+        self.min_sentiment_strength = self.advanced_config.get('min_sentiment_strength', 0.2)
+        self.require_multiple_tickers = self.advanced_config.get('require_multiple_tickers', False)
+        self.min_ticker_count = self.advanced_config.get('min_ticker_count', 1)
+        
         # Daily counters
         self.daily_headline_count = 0
         self.daily_reset_time = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         self.processed_hashes = set()
         
+        # Store recent items for similarity checking
+        self.recent_items = []  # Store last N items for similarity detection
+        
         # Compile regex patterns for efficiency
         self._compile_patterns()
         
         logger.info(f"📰 NewsFilter initialized with {len(self.tracked_tickers)} tracked tickers, {len(self.keywords)} keywords")
+        logger.info(f"🔍 Multi-source validation: {'enabled' if self.enable_source_validation else 'disabled'}")
     
     def _compile_patterns(self):
         """Compile regex patterns for efficient matching"""
@@ -183,7 +242,7 @@ class NewsFilter:
         return filtered_items, stats
     
     def _create_news_item(self, raw_item: Dict) -> NewsItem:
-        """Convert raw news item to standardized NewsItem"""
+        """Convert raw news item to standardized NewsItem with enhanced metadata"""
         # Handle different date formats
         published_at = raw_item.get('published_at')
         if isinstance(published_at, str):
@@ -205,19 +264,31 @@ class NewsFilter:
         tickers = self._extract_tickers(full_text)
         keywords = self._extract_keywords(full_text)
         
+        # Get source metadata
+        source_name = raw_item.get('source', 'unknown')
+        source_priority, source_category = self._get_source_metadata(source_name)
+        
+        # Calculate scores
+        relevance_score = self._calculate_relevance_score(tickers, keywords)
+        sentiment_score = self._calculate_sentiment_score(full_text)
+        
         return NewsItem(
             title=title,
             content=content,
-            source=raw_item.get('source', 'unknown'),
+            source=source_name,
             url=raw_item.get('url', ''),
             published_at=published_at,
             tickers=tickers,
             keywords=keywords,
-            hash_id=''  # Will be set in __post_init__
+            hash_id='',  # Will be set in __post_init__
+            source_priority=source_priority,
+            source_category=source_category,
+            sentiment_score=sentiment_score,
+            relevance_score=relevance_score
         )
     
     def _apply_filters(self, news_item: NewsItem) -> Tuple[bool, str]:
-        """Apply all filters to a news item"""
+        """Apply all filters to a news item with enhanced validation"""
         
         # 1. Market hours filter
         if not self._is_market_hours(news_item.published_at):
@@ -227,22 +298,38 @@ class NewsFilter:
         if self._is_duplicate(news_item):
             return False, "duplicate_content"
         
-        # 3. Ticker relevance filter
-        if not news_item.tickers:
-            return False, "no_relevant_tickers"
+        # 3. Relevance score filter
+        if news_item.relevance_score < self.min_relevance_score:
+            return False, f"low_relevance_score_{news_item.relevance_score:.2f}"
         
-        # 4. Keyword relevance filter
-        if not news_item.keywords:
+        # 4. Sentiment strength filter (only if sentiment is present)
+        if abs(news_item.sentiment_score) > 0:
+            if abs(news_item.sentiment_score) < self.min_sentiment_strength:
+                return False, f"weak_sentiment_{abs(news_item.sentiment_score):.2f}"
+        
+        # 5. Ticker count filter
+        if self.require_multiple_tickers and len(news_item.tickers) < self.min_ticker_count:
+            return False, f"insufficient_tickers_{len(news_item.tickers)}"
+        elif len(news_item.tickers) < self.min_ticker_count:
+            return False, f"no_relevant_tickers"
+        
+        # 6. Keyword relevance filter (relaxed - allow items with good ticker coverage)
+        if not news_item.keywords and len(news_item.tickers) < 2:
             return False, "no_relevant_keywords"
         
-        # 5. Content quality filter
+        # 7. Content quality filter
         if len(news_item.title) < 10 or len(news_item.content) < 20:
             return False, "insufficient_content"
         
-        # 6. Source quality filter (optional)
+        # 8. Source quality filter (optional)
         low_quality_sources = {'spam', 'clickbait', 'fake'}
         if any(source in news_item.source.lower() for source in low_quality_sources):
             return False, "low_quality_source"
+        
+        # 9. Source validation (if enabled)
+        if self.enable_source_validation:
+            if news_item.source_priority < 2:  # Very low priority sources
+                return False, f"low_priority_source_{news_item.source_priority}"
         
         return True, "accepted"
     
@@ -256,6 +343,45 @@ class NewsFilter:
             "keywords_count": len(self.keywords),
             "processed_hashes_count": len(self.processed_hashes)
         }
+
+    def _get_source_metadata(self, source_name: str) -> Tuple[int, str]:
+        """Get source priority and category"""
+        priority = self.source_weights.get(source_name, self.source_weights.get("unknown", 1))
+        category = self.source_categories.get(source_name, self.source_categories.get("unknown", "general"))
+        return priority, category
+    
+    def _calculate_relevance_score(self, tickers: List[str], keywords: List[str]) -> float:
+        """Calculate relevance score based on tickers and keywords"""
+        if not tickers and not keywords:
+            return 0.0
+        
+        # Weight tickers more heavily than keywords
+        ticker_score = len(tickers) * 0.6
+        keyword_score = len(keywords) * 0.4
+        
+        total_score = ticker_score + keyword_score
+        
+        # Normalize to 0-1 range (max score would be ~10 for very relevant items)
+        return min(total_score / 10.0, 1.0)
+    
+    def _calculate_sentiment_score(self, text: str) -> float:
+        """Calculate basic sentiment score using simple heuristics"""
+        # Simple sentiment calculation - in production, use VADER or similar
+        positive_words = {'surge', 'rally', 'gain', 'up', 'positive', 'bullish', 'growth', 'profit', 'earnings', 'beat'}
+        negative_words = {'drop', 'fall', 'decline', 'down', 'negative', 'bearish', 'loss', 'miss', 'crash', 'plunge'}
+        
+        text_lower = text.lower()
+        positive_count = sum(1 for word in positive_words if word in text_lower)
+        negative_count = sum(1 for word in negative_words if word in text_lower)
+        
+        if positive_count == 0 and negative_count == 0:
+            return 0.0
+        
+        # Normalize to -1 to 1 range
+        total = positive_count + negative_count
+        sentiment = (positive_count - negative_count) / total
+        
+        return sentiment
 
 
 def create_news_filter(config: Dict) -> NewsFilter:

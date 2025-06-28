@@ -432,7 +432,7 @@ def analyze_news_batch(news_batch, etf_prices=None, contextual_insight=None, mem
 
 
 def build_batch_analysis_prompt(news_batch, etf_prices=None, contextual_insight=None):
-    """Build comprehensive analysis prompt for a batch of news items"""
+    """Build comprehensive analysis prompt for a batch of news items with multi-source validation"""
     # Build ETF price context
     price_context = ""
     if etf_prices:
@@ -445,6 +445,35 @@ def build_batch_analysis_prompt(news_batch, etf_prices=None, contextual_insight=
     
     # Build news batch content
     news_content = news_batch.get_combined_text()
+    
+    # Multi-source validation context
+    validation_context = f"""
+🔍 MULTI-SOURCE VALIDATION METRICS:
+• Batch Quality Score: {news_batch.batch_quality_score:.2f}/1.0
+• Source Agreement: {news_batch.source_agreement_score:.2f}/1.0
+• Source Diversity: {news_batch.source_diversity} unique sources
+• Average Source Weight: {news_batch.avg_source_weight:.2f}/5.0
+• Sentiment Consistency: {news_batch.sentiment_consistency:.2f}/1.0
+• Contradiction Flag: {'⚠️ YES - Sources contradict each other' if news_batch.contradiction_flag else '✅ NO - Sources are consistent'}
+• Average Relevance: {news_batch.avg_relevance_score:.2f}/1.0
+• Average Sentiment: {news_batch.avg_sentiment_score:.2f} (-1 to +1)
+
+📊 SIGNAL QUALITY ASSESSMENT:
+"""
+    
+    # Add quality-based guidance
+    if news_batch.batch_quality_score >= 0.8:
+        validation_context += "• HIGH QUALITY: Strong source agreement, high relevance, consistent sentiment\n"
+        validation_context += "• RECOMMENDATION: High confidence signals likely\n"
+    elif news_batch.batch_quality_score >= 0.6:
+        validation_context += "• MEDIUM QUALITY: Moderate source agreement, some relevance\n"
+        validation_context += "• RECOMMENDATION: Moderate confidence, verify with additional context\n"
+    else:
+        validation_context += "• LOW QUALITY: Weak source agreement, contradictions, or low relevance\n"
+        validation_context += "• RECOMMENDATION: Low confidence, consider filtering out\n"
+    
+    if news_batch.contradiction_flag:
+        validation_context += "• ⚠️ CONTRADICTION DETECTED: Sources have opposing views - analyze carefully\n"
     
     return f"""
 You are MarketMan — a tactical ETF strategist focused on identifying high-momentum opportunities in defense, AI, energy, clean tech, and volatility hedging. Your job is to analyze a BATCH of related news items and identify the strongest ETF opportunities.
@@ -460,12 +489,15 @@ You are MarketMan — a tactical ETF strategist focused on identifying high-mome
 • Identify EMERGING TRENDS from related news items
 • Focus on the MOST ACTIONABLE opportunities in the batch
 • Consider the COMBINED IMPACT of all headlines on specific sectors
+• Pay attention to SOURCE QUALITY and AGREEMENT
 
 🧠 PATTERN MEMORY:
 {contextual_insight or 'None'}
 
 📊 MARKET SNAPSHOT:
 {price_context or 'No price data'}
+
+{validation_context}
 
 📰 NEWS BATCH ({news_batch.batch_size} items):
 {news_content}
@@ -476,6 +508,13 @@ Analyze this batch of related news items to determine if there's a STRONG, ACTIO
 2. **Emerging trends** - new developments that could drive sector momentum
 3. **Specific catalysts** - concrete events that could move ETF prices
 4. **Sector focus** - which specialized ETF sectors are most affected
+5. **Source reliability** - how much to trust the signal based on source quality
+
+**SIGNAL QUALITY CONSIDERATIONS:**
+• If batch quality score < 0.5, be more conservative with confidence
+• If contradictions detected, analyze both sides and explain uncertainty
+• If high source agreement, you can be more confident in the signal
+• If low sentiment consistency, consider the signal less reliable
 
 If this batch does NOT contain actionable ETF opportunities, return:
 {{"relevance": "not_financial", "confidence": 0}}
@@ -496,15 +535,17 @@ Otherwise, return:
   "opportunity_thesis": "Why this batch creates a strong ETF opportunity",
   "theme_category": "AI/Robotics|Defense/Aerospace|CleanTech/Climate|Volatility/Hedge|Nuclear/Uranium",
   "batch_insights": "Key insights from analyzing multiple headlines together",
-  "confirmation_strength": "How strongly the batch confirms the signal (1-10)"
+  "confirmation_strength": "How strongly the batch confirms the signal (1-10)",
+  "source_quality_assessment": "Assessment of source reliability and agreement",
+  "signal_quality_score": "Overall signal quality based on batch metrics (1-10)"
 }}
 
-**REMEMBER:** This is a BATCH analysis - look for patterns and confirmation across multiple headlines. The signal should be stronger if multiple headlines support the same thesis.
+**REMEMBER:** This is a BATCH analysis - look for patterns and confirmation across multiple headlines. The signal should be stronger if multiple headlines support the same thesis. Consider source quality and agreement when determining confidence.
 """
 
 
 def _validate_batch_analysis(analysis_result):
-    """Validate batch analysis results against hard rules"""
+    """Validate batch analysis results against hard rules with quality considerations"""
     # Check confidence threshold
     if analysis_result.get("confidence", 0) < 7:
         logger.debug(f"Batch confidence below threshold: {analysis_result.get('confidence')}")
@@ -527,5 +568,18 @@ def _validate_batch_analysis(analysis_result):
     if not any(etf in specialized_etfs for etf in affected_etfs):
         logger.debug("Batch analysis contains no specialized ETFs")
         return False
+    
+    # Additional quality checks (if batch metadata is available)
+    if "batch_quality_score" in analysis_result:
+        quality_score = analysis_result.get("batch_quality_score", 0)
+        if quality_score < 0.4:  # Very low quality batches
+            logger.debug(f"Batch quality score too low: {quality_score}")
+            return False
+    
+    if "source_quality_assessment" in analysis_result:
+        source_assessment = analysis_result.get("source_quality_assessment", "").lower()
+        if "unreliable" in source_assessment or "contradictory" in source_assessment:
+            logger.debug(f"Source quality assessment indicates unreliable sources")
+            return False
     
     return True
