@@ -354,7 +354,7 @@ def categorize_etfs_by_sector(etfs):
     return focused_etfs, primary_sector
 
 
-def analyze_news_batch(news_batch, etf_prices=None, contextual_insight=None, memory=None):
+def analyze_news_batch(news_batch, etf_prices=None, contextual_insight=None, memory=None, technicals=None, pattern_results=None):
     """
     Analyze a batch of news items for thematic ETF opportunities.
     Processes multiple headlines together for more comprehensive analysis.
@@ -364,6 +364,8 @@ def analyze_news_batch(news_batch, etf_prices=None, contextual_insight=None, mem
         etf_prices: Optional dict of current ETF prices
         contextual_insight: Optional contextual information from memory
         memory: Optional MarketMemory instance for storing results
+        technicals: Optional dict of technical indicators for batch tickers
+        pattern_results: Optional dict of pattern recognition results
     
     Returns:
         Dict containing batch analysis results
@@ -375,7 +377,7 @@ def analyze_news_batch(news_batch, etf_prices=None, contextual_insight=None, mem
     logger.info(f"🤖 Analyzing news batch: {news_batch.get_summary()}")
     
     # Build batch analysis prompt
-    prompt = build_batch_analysis_prompt(news_batch, etf_prices, contextual_insight)
+    prompt = build_batch_analysis_prompt(news_batch, etf_prices, contextual_insight, technicals, pattern_results)
     
     try:
         response = client.chat.completions.create(
@@ -408,6 +410,9 @@ def analyze_news_batch(news_batch, etf_prices=None, contextual_insight=None, mem
             json_result["common_keywords"] = news_batch.common_keywords
             json_result["analysis_timestamp"] = datetime.now().isoformat()
             json_result["source_headlines"] = [item.title for item in news_batch.items]
+            json_result["technicals_included"] = len(technicals) if technicals else 0
+            json_result["patterns_detected"] = pattern_results.get("patterns_detected", 0) if pattern_results else 0
+            json_result["patterns"] = pattern_results.get("patterns", []) if pattern_results else []
             
             # Store in memory if available
             if memory:
@@ -431,8 +436,8 @@ def analyze_news_batch(news_batch, etf_prices=None, contextual_insight=None, mem
         return None
 
 
-def build_batch_analysis_prompt(news_batch, etf_prices=None, contextual_insight=None):
-    """Build comprehensive analysis prompt for a batch of news items with multi-source validation"""
+def build_batch_analysis_prompt(news_batch, etf_prices=None, contextual_insight=None, technicals=None, pattern_results=None):
+    """Build comprehensive analysis prompt for a batch of news items with multi-source validation, technical analysis, and pattern recognition"""
     # Build ETF price context
     price_context = ""
     if etf_prices:
@@ -442,6 +447,24 @@ def build_batch_analysis_prompt(news_batch, etf_prices=None, contextual_insight=
             trend_emoji = "📈" if data["change_pct"] > 0 else "📉" if data["change_pct"] < 0 else "➖"
             price_context += f"• {symbol} ({data.get('name', symbol)}): ${data['price']} ({change_sign}{data['change_pct']}%) {trend_emoji}\n"
         price_context += "\nUse this real-time data to inform your strategic analysis.\n"
+    
+    # Build technical indicators context
+    technical_context = ""
+    if technicals:
+        technical_context = "\n📈 TECHNICAL INDICATORS:\n"
+        for ticker, tech_data in technicals.items():
+            technical_context += f"• {ticker}: RSI={tech_data.get('rsi', 'N/A')}, MACD={tech_data.get('macd', 'N/A')}, BB={tech_data.get('bollinger', 'N/A')}\n"
+        technical_context += "\nUse these technical indicators to assess momentum and support/resistance levels.\n"
+    
+    # Build pattern recognition context
+    pattern_context = ""
+    if pattern_results:
+        pattern_context = f"\n🔎 PATTERN RECOGNITION:\n• Patterns Detected: {pattern_results.get('patterns_detected', 0)}\n"
+        if pattern_results.get('patterns'):
+            for p in pattern_results['patterns']:
+                pattern_context += f"  - {p}\n"
+        else:
+            pattern_context += "  (No patterns detected)\n"
     
     # Build news batch content
     news_content = news_batch.get_combined_text()
@@ -490,6 +513,8 @@ You are MarketMan — a tactical ETF strategist focused on identifying high-mome
 • Focus on the MOST ACTIONABLE opportunities in the batch
 • Consider the COMBINED IMPACT of all headlines on specific sectors
 • Pay attention to SOURCE QUALITY and AGREEMENT
+• Factor in TECHNICAL INDICATORS for momentum confirmation
+• Consider PATTERN RECOGNITION for additional signal confirmation
 
 🧠 PATTERN MEMORY:
 {contextual_insight or 'None'}
@@ -497,6 +522,8 @@ You are MarketMan — a tactical ETF strategist focused on identifying high-mome
 📊 MARKET SNAPSHOT:
 {price_context or 'No price data'}
 
+{technical_context}
+{pattern_context}
 {validation_context}
 
 📰 NEWS BATCH ({news_batch.batch_size} items):
@@ -509,12 +536,17 @@ Analyze this batch of related news items to determine if there's a STRONG, ACTIO
 3. **Specific catalysts** - concrete events that could move ETF prices
 4. **Sector focus** - which specialized ETF sectors are most affected
 5. **Source reliability** - how much to trust the signal based on source quality
+6. **Technical confirmation** - how technical indicators support or contradict the news signal
+7. **Pattern recognition** - do any classic chart patterns support or contradict the signal?
 
 **SIGNAL QUALITY CONSIDERATIONS:**
 • If batch quality score < 0.5, be more conservative with confidence
 • If contradictions detected, analyze both sides and explain uncertainty
 • If high source agreement, you can be more confident in the signal
 • If low sentiment consistency, consider the signal less reliable
+• If technical indicators align with news sentiment, increase confidence
+• If technical indicators contradict news sentiment, explain the divergence
+• If pattern recognition supports the signal, increase confidence
 
 If this batch does NOT contain actionable ETF opportunities, return:
 {{"relevance": "not_financial", "confidence": 0}}
@@ -537,10 +569,12 @@ Otherwise, return:
   "batch_insights": "Key insights from analyzing multiple headlines together",
   "confirmation_strength": "How strongly the batch confirms the signal (1-10)",
   "source_quality_assessment": "Assessment of source reliability and agreement",
-  "signal_quality_score": "Overall signal quality based on batch metrics (1-10)"
+  "signal_quality_score": "Overall signal quality based on batch metrics (1-10)",
+  "technical_confirmation": "How technical indicators support or contradict the signal",
+  "pattern_recognition": "Summary of any detected chart patterns and their impact on the signal"
 }}
 
-**REMEMBER:** This is a BATCH analysis - look for patterns and confirmation across multiple headlines. The signal should be stronger if multiple headlines support the same thesis. Consider source quality and agreement when determining confidence.
+**REMEMBER:** This is a BATCH analysis - look for patterns and confirmation across multiple headlines. The signal should be stronger if multiple headlines support the same thesis. Consider source quality, agreement, technical indicators, and pattern recognition when determining confidence.
 """
 
 

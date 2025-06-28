@@ -13,9 +13,11 @@ from .news_sources.base import NewsSourceManager, RawNewsItem
 from .news_sources.finnhub import create_finnhub_source
 from .news_sources.newsapi import create_newsapi_source
 from .news_sources.newdata import create_newdata_source
+from .technicals import get_batch_technicals
 
 # Import ETF signal engine for batch analysis
 from ..signals.etf_signal_engine import analyze_news_batch
+from ..signals.pattern_recognizer import create_pattern_recognizer
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,7 @@ class NewsIngestionOrchestrator:
         self.news_batcher = create_news_batcher(config)
         self.news_sources = self._initialize_news_sources()
         self.source_manager = NewsSourceManager(self.news_sources)
+        self.pattern_recognizer = create_pattern_recognizer(config)
         
         # Cost tracking
         self.daily_ai_calls = 0
@@ -217,12 +220,22 @@ class NewsIngestionOrchestrator:
     def _analyze_batch_with_ai(self, batch: NewsBatch) -> Optional[Dict]:
         """Analyze a news batch with the ETF signal engine"""
         try:
+            # Fetch technical indicators for batch tickers
+            technicals = get_batch_technicals(batch.common_tickers)
+            logger.debug(f"📊 Fetched technicals for {len(technicals)} tickers in batch {batch.batch_id}")
+            
+            # Pattern recognition (stub)
+            pattern_results = self.pattern_recognizer.detect_patterns(batch.common_tickers, technicals)
+            logger.debug(f"🔍 Pattern recognition results: {pattern_results}")
+            
             # Call the ETF signal engine for batch analysis
             analysis_result = analyze_news_batch(
                 news_batch=batch,
                 etf_prices=None,  # TODO: Add real-time ETF prices
                 contextual_insight=None,  # TODO: Add memory context
-                memory=None  # TODO: Add MarketMemory instance
+                memory=None,  # TODO: Add MarketMemory instance
+                technicals=technicals,  # Pass technical indicators
+                pattern_results=pattern_results  # Pass pattern recognition results
             )
             
             if analysis_result:
@@ -231,6 +244,8 @@ class NewsIngestionOrchestrator:
                 analysis_result["processed_at"] = datetime.now().isoformat()
                 analysis_result["items_count"] = batch.batch_size
                 analysis_result["source_headlines"] = [item.title for item in batch.items]
+                analysis_result["technicals_fetched"] = len(technicals)
+                analysis_result["patterns_detected"] = pattern_results.get("patterns_detected", 0)
                 
                 logger.info(f"✅ Batch {batch.batch_id} analyzed successfully: {analysis_result.get('signal', 'Unknown')} signal")
                 return analysis_result

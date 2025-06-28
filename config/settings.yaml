@@ -232,4 +232,17 @@ min_confidence_threshold: 7
 min_mentions_for_etf: 2
 technical_analysis:
   enabled: true
-  indicators: ["rsi", "macd", "bollinger"] 
+  indicators: ["rsi", "macd", "bollinger"]
+
+# Pattern Recognition
+pattern_recognition:
+  enabled: true
+  min_pattern_confidence: 0.7
+  supported_patterns:
+    - "double_top"
+    - "double_bottom"
+    - "head_and_shoulders"
+    - "breakout"
+    - "breakdown"
+    - "support_resistance"
+    - "volume_spike" 
