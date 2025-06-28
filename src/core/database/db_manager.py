@@ -36,8 +36,6 @@ class DatabaseManager:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Initialize database schema
-        self._init_database()
         logger.info(f"Database manager initialized for: {self.db_path}")
 
     @contextmanager
@@ -190,63 +188,103 @@ class MarketMemoryDB(DatabaseManager):
 
     def __init__(self, db_path: str = "marketman_memory.db"):
         """Initialize the market memory database."""
-        super().__init__(db_path)
+        import sqlite3
+        if db_path == ':memory:':
+            logger.info("Initializing in-memory database schema with persistent connection (before super)")
+            self.db_path = ':memory:'
+            self._memory_conn = sqlite3.connect(':memory:')
+            self._memory_conn.row_factory = sqlite3.Row
+            self._init_database()
+        else:
+            super().__init__(db_path)
+            self._memory_conn = None
+
+    @contextmanager
+    def get_connection(self):
+        """Get a database connection with proper error handling."""
+        if getattr(self, '_memory_conn', None) is not None:
+            try:
+                yield self._memory_conn
+            except Exception as e:
+                logger.error(f"Database error: {e}")
+                self._memory_conn.rollback()
+                raise
+        else:
+            conn = None
+            try:
+                import sqlite3
+                conn = sqlite3.connect(self.db_path)
+                conn.row_factory = sqlite3.Row
+                yield conn
+            except sqlite3.Error as e:
+                logger.error(f"Database error: {e}")
+                if conn:
+                    conn.rollback()
+                raise
+            finally:
+                if conn:
+                    conn.close()
 
     def _init_database(self) -> None:
         """Initialize market memory database schema."""
-        if self.table_exists("signals"):
-            return
+        logger.info(f"Initializing database schema for path: {self.db_path}")
+        
+        # For in-memory databases, always create tables
+        if self.db_path == ':memory:' or not self.table_exists("signals"):
+            logger.info("Creating database tables")
+            
+            # Create signals table
+            signals_schema = """
+            CREATE TABLE IF NOT EXISTS signals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                signal_type TEXT NOT NULL,
+                confidence REAL,
+                etfs TEXT,
+                reasoning TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
 
-        # Create signals table
-        signals_schema = """
-        CREATE TABLE IF NOT EXISTS signals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL,
-            signal_type TEXT NOT NULL,
-            confidence REAL,
-            etfs TEXT,
-            reasoning TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """
+            # Create patterns table
+            patterns_schema = """
+            CREATE TABLE IF NOT EXISTS patterns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                start_date TEXT NOT NULL,
+                end_date TEXT,
+                pattern_type TEXT NOT NULL,
+                etfs TEXT,
+                strength REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
 
-        # Create patterns table
-        patterns_schema = """
-        CREATE TABLE IF NOT EXISTS patterns (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            start_date TEXT NOT NULL,
-            end_date TEXT,
-            pattern_type TEXT NOT NULL,
-            etfs TEXT,
-            strength REAL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """
+            # Create contextual insights table
+            insights_schema = """
+            CREATE TABLE IF NOT EXISTS contextual_insights (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                insight_type TEXT NOT NULL,
+                content TEXT,
+                relevance_score REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
 
-        # Create contextual insights table
-        insights_schema = """
-        CREATE TABLE IF NOT EXISTS contextual_insights (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL,
-            insight_type TEXT NOT NULL,
-            content TEXT,
-            relevance_score REAL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """
+            try:
+                with self.get_connection() as conn:
+                    conn.execute("PRAGMA journal_mode=WAL;")
+                    conn.execute(signals_schema)
+                    conn.execute(patterns_schema)
+                    conn.execute(insights_schema)
+                    conn.commit()
 
-        try:
-            with self.get_connection() as conn:
-                conn.execute("PRAGMA journal_mode=WAL;")
-                conn.execute(signals_schema)
-                conn.execute(patterns_schema)
-                conn.execute(insights_schema)
-                conn.commit()
-
-            logger.info("Market memory database schema initialized")
-        except Exception as e:
-            logger.error(f"Failed to initialize market memory schema: {e}")
-            raise
+                logger.info("Market memory database schema initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize market memory schema: {e}")
+                raise
+        else:
+            logger.info("Database tables already exist, skipping initialization")
 
     def store_signal(self, signal_data: Dict[str, Any]) -> int:
         """

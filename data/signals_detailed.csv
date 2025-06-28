@@ -1,0 +1,7 @@
+timestamp,symbol,signal_type,direction,confidence,reasoning,source,market_sentiment,sector,current_price,volume,signal_id,batch_id,analysis_session,action_taken,trade_executed,trade_reference,price_at_signal,price_after_24h,price_after_1w,price_after_1m,keywords,news_articles,technical_indicators
+2025-06-28T15:15:59.475231,BOTZ,news,bullish,8.5,Strong AI news sentiment with positive earnings,news_analysis,bullish,technology,,,,,,,,,,,,,[],[],{}
+2025-06-28T15:15:59.475279,ITA,technical,bearish,6.0,"RSI overbought, MACD divergence",technical_analysis,,,120.5,,,,,,,,,,,,[],[],{}
+2025-06-28T15:17:35.988441,BOTZ,news,bullish,8.5,Strong AI news sentiment with positive earnings,news_analysis,bullish,technology,,,,,,,,,,,,,[],[],{}
+2025-06-28T15:17:35.988513,ITA,technical,bearish,6.0,"RSI overbought, MACD divergence",technical_analysis,,,120.5,,,,,,,,,,,,[],[],{}
+2025-06-28T15:17:47.934168,BOTZ,news,bullish,8.5,Strong AI news sentiment with positive earnings,news_analysis,bullish,technology,,,,,,,,,,,,,[],[],{}
+2025-06-28T15:17:47.934238,ITA,technical,bearish,6.0,"RSI overbought, MACD divergence",technical_analysis,,,120.5,,,,,,,,,,,,[],[],{}

@@ -1,0 +1,7 @@
+timestamp,symbol,signal_type,direction,confidence,reasoning,source,action_taken,trade_executed
+2025-06-28T15:15:59.475231,BOTZ,news,bullish,8.5,Strong AI news sentiment with positive earnings,news_analysis,,False
+2025-06-28T15:15:59.475279,ITA,technical,bearish,6.0,"RSI overbought, MACD divergence",technical_analysis,,False
+2025-06-28T15:17:35.988441,BOTZ,news,bullish,8.5,Strong AI news sentiment with positive earnings,news_analysis,,False
+2025-06-28T15:17:35.988513,ITA,technical,bearish,6.0,"RSI overbought, MACD divergence",technical_analysis,,False
+2025-06-28T15:17:47.934168,BOTZ,news,bullish,8.5,Strong AI news sentiment with positive earnings,news_analysis,,False
+2025-06-28T15:17:47.934238,ITA,technical,bearish,6.0,"RSI overbought, MACD divergence",technical_analysis,,False

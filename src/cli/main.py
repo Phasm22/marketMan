@@ -16,6 +16,9 @@ from src.core.journal import AlertBatcher
 from src.core.risk import PositionSizer
 from src.core.ingestion import create_news_orchestrator
 
+# Import journal commands
+from .commands.journal import journal
+
 
 def setup_logging(verbose: bool = False) -> None:
     """
@@ -50,6 +53,9 @@ Examples:
   marketman options scalp        # Run options scalping strategy
   marketman news status          # Show news ingestion status
   marketman news cycle           # Run news processing cycle
+  marketman journal performance  # Generate performance report
+  marketman journal signals      # Generate signal analysis
+  marketman journal import-fidelity # Import Fidelity trades
         """,
     )
 
@@ -100,6 +106,32 @@ Examples:
     news_parser.add_argument(
         "action", choices=["status", "cycle", "test", "signals"], help="News action to perform"
     )
+
+    # Journal command (Phase 3)
+    journal_parser = subparsers.add_parser("journal", help="Trade journaling and performance tracking")
+    journal_parser.add_argument(
+        "action", choices=[
+            "list-trades", "performance", "signals", "setup-fidelity", 
+            "import-fidelity", "add-trade", "add-signal", "sync-notion", "analyze"
+        ], help="Journal action to perform"
+    )
+    
+    # Add journal-specific options
+    journal_parser.add_argument("--symbol", "-s", help="Symbol filter")
+    journal_parser.add_argument("--days", "-d", type=int, default=30, help="Number of days")
+    journal_parser.add_argument("--output", "-o", help="Output file")
+    journal_parser.add_argument("--action", "-a", help="Trade action (Buy/Sell)")
+    journal_parser.add_argument("--quantity", "-q", type=float, help="Trade quantity")
+    journal_parser.add_argument("--price", "-p", type=float, help="Trade price")
+    journal_parser.add_argument("--date", help="Trade date")
+    journal_parser.add_argument("--confidence", "-c", type=float, help="Signal confidence")
+    journal_parser.add_argument("--notes", "-n", help="Trade notes")
+    journal_parser.add_argument("--type", "-t", help="Signal type")
+    journal_parser.add_argument("--direction", help="Signal direction")
+    journal_parser.add_argument("--reasoning", "-r", help="Signal reasoning")
+    journal_parser.add_argument("--source", help="Signal source")
+    journal_parser.add_argument("--email", "-e", help="Email for Fidelity setup")
+    journal_parser.add_argument("--password", help="Password for Fidelity setup")
 
     return parser
 
@@ -501,6 +533,160 @@ def handle_news(args: argparse.Namespace) -> int:
         return 1
 
 
+def handle_journal(args: argparse.Namespace) -> int:
+    """
+    Handle journal command.
+
+    Args:
+        args: Parsed arguments
+
+    Returns:
+        Exit code
+    """
+    try:
+        if args.action == "list-trades":
+            from src.core.journal.trade_journal import create_trade_journal
+            from datetime import datetime, timedelta
+            
+            journal = create_trade_journal()
+            start_date = (datetime.now() - timedelta(days=args.days)).isoformat()
+            trades = journal.get_trades(symbol=args.symbol, start_date=start_date)
+            
+            if not trades:
+                print("No trades found for the specified criteria.")
+                return 0
+            
+            print(f"Found {len(trades)} trades:")
+            print("-" * 80)
+            
+            for trade in trades[:20]:  # Show first 20 trades
+                print(f"{trade['timestamp']} | {trade['symbol']} | {trade['action']} | "
+                      f"{trade['quantity']} @ ${trade['price']:.2f} | ${trade['trade_value']:.2f}")
+            
+            if len(trades) > 20:
+                print(f"... and {len(trades) - 20} more trades")
+            
+            if args.output:
+                if journal.export_trades_to_csv(args.output, args.symbol, start_date):
+                    print(f"Trades exported to {args.output}")
+                else:
+                    print("Failed to export trades")
+            
+        elif args.action == "performance":
+            from src.core.journal.performance_tracker import generate_performance_report
+            
+            print(f"Generating performance report for last {args.days} days...")
+            report = generate_performance_report(args.days)
+            
+            # Display summary
+            print("\n📊 PERFORMANCE SUMMARY")
+            print("=" * 50)
+            print(f"Total Trades: {report['metrics']['total_trades']}")
+            print(f"Winning Trades: {report['metrics']['winning_trades']}")
+            print(f"Losing Trades: {report['metrics']['losing_trades']}")
+            print(f"Total P&L: ${report['metrics']['total_pnl']:,.2f}")
+            print(f"Win Rate: {report['metrics']['win_rate']}")
+            print(f"Profit Factor: {report['metrics']['profit_factor']:.2f}")
+            print(f"Max Drawdown: ${report['metrics']['max_drawdown']:,.2f}")
+            print(f"Sharpe Ratio: {report['metrics']['sharpe_ratio']:.2f}")
+            print(f"Signal Accuracy: {report['metrics']['signal_accuracy']}")
+            
+            if args.output:
+                import json
+                with open(args.output, 'w') as f:
+                    json.dump(report, f, indent=2)
+                print(f"\nReport saved to {args.output}")
+            
+        elif args.action == "signals":
+            from src.core.journal.signal_logger import generate_signal_report
+            
+            print(f"Generating signal report for last {args.days} days...")
+            report = generate_signal_report(args.days)
+            
+            # Display summary
+            print("\n📊 SIGNAL ANALYSIS")
+            print("=" * 40)
+            print(f"Total Signals: {report['summary']['total_signals']}")
+            print(f"Executed Signals: {report['summary']['executed_signals']}")
+            print(f"Signal Accuracy: {report['summary']['signal_accuracy']}")
+            print(f"Avg Confidence: {report['summary']['avg_confidence']:.2f}")
+            
+            if args.output:
+                import json
+                with open(args.output, 'w') as f:
+                    json.dump(report, f, indent=2)
+                print(f"\nReport saved to {args.output}")
+            
+        elif args.action == "import-fidelity":
+            from src.integrations.fidelity_integration import auto_import_fidelity_trades
+            
+            print("Importing Fidelity trades...")
+            results = auto_import_fidelity_trades()
+            
+            print(f"\n📊 IMPORT RESULTS")
+            print("=" * 30)
+            print(f"Email trades found: {results['email_trades']}")
+            print(f"CSV trades found: {results['csv_trades']}")
+            print(f"Trades imported: {results['imported_trades']}")
+            
+            if results['errors']:
+                print(f"\n❌ ERRORS:")
+                for error in results['errors']:
+                    print(f"  - {error}")
+            
+            if results['imported_trades'] > 0:
+                print(f"\n✅ Successfully imported {results['imported_trades']} trades!")
+            else:
+                print("\nℹ️ No new trades to import")
+            
+        elif args.action == "analyze":
+            from src.core.journal.performance_tracker import generate_performance_report
+            from src.core.journal.signal_logger import generate_signal_report
+            
+            print(f"Running comprehensive analysis for last {args.days} days...")
+            
+            # Performance analysis
+            print("\n📊 PERFORMANCE ANALYSIS")
+            print("=" * 30)
+            perf_report = generate_performance_report(args.days)
+            print(f"Total P&L: ${perf_report['metrics']['total_pnl']:,.2f}")
+            print(f"Win Rate: {perf_report['metrics']['win_rate']}")
+            print(f"Signal Accuracy: {perf_report['metrics']['signal_accuracy']}")
+            
+            # Signal analysis
+            print("\n📈 SIGNAL ANALYSIS")
+            print("=" * 20)
+            signal_report = generate_signal_report(args.days)
+            print(f"Total Signals: {signal_report['summary']['total_signals']}")
+            print(f"Signal Accuracy: {signal_report['summary']['signal_accuracy']}")
+            
+            # Recommendations
+            print("\n💡 RECOMMENDATIONS")
+            print("=" * 20)
+            
+            if perf_report['metrics']['win_rate'] < 50:
+                print("⚠️ Win rate below 50% - consider reviewing strategy")
+            
+            if perf_report['metrics']['signal_accuracy'] < 60:
+                print("⚠️ Signal accuracy below 60% - consider improving signal quality")
+            
+            if perf_report['metrics']['max_drawdown'] > 1000:
+                print("⚠️ High drawdown - consider risk management improvements")
+            
+            print("✅ Analysis complete!")
+            
+        else:
+            print(f"Unknown journal action: {args.action}")
+            print("Available actions: list-trades, performance, signals, import-fidelity, analyze")
+            return 1
+        
+        return 0
+        
+    except Exception as e:
+        logging.error(f"Error in journal command: {e}")
+        return 1
+
+
 def main() -> int:
     """
     Main CLI entry point.
@@ -531,6 +717,8 @@ def main() -> int:
             return handle_risk(args)
         elif args.command == "news":
             return handle_news(args)
+        elif args.command == "journal":
+            return handle_journal(args)
         else:
             print(f"Unknown command: {args.command}")
             return 1
