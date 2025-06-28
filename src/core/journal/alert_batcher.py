@@ -13,7 +13,14 @@ import hashlib
 import logging
 
 from ..database.db_manager import alert_batch_db
-from integrations.pushover_utils import send_pushover_notification
+
+try:
+    from ...integrations.pushover_utils import send_pushover_notification
+except ImportError:
+    # Fallback for direct execution
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    from src.integrations.pushover_utils import send_pushover_notification
 
 logger = logging.getLogger(__name__)
 
@@ -270,16 +277,6 @@ ETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
 
     def send_batch(self, strategy: BatchStrategy) -> bool:
         """Send a batch of alerts using the specified strategy"""
-        import sys
-        import os
-
-        # Add project root to path for imports
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        if project_root not in sys.path:
-            sys.path.insert(0, project_root)
-
-        from integrations.pushover_utils import send_pushover_notification
-
         alerts = self.get_pending_alerts(strategy)
         if not alerts:
             return False

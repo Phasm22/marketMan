@@ -6,7 +6,7 @@ files including settings, strategies, and broker configurations.
 """
 
 import os
-import yaml
+import yaml  # type: ignore
 from pathlib import Path
 from typing import Dict, Any, Optional
 import logging

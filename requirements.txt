@@ -1,8 +1,6 @@
 # Core dependencies
 python-dotenv>=1.0.0
 pyyaml>=6.0
-sqlite3
-logging
 
 # Database
 sqlalchemy>=2.0.0
@@ -38,4 +36,5 @@ pre-commit>=3.3.0
 
 # Development
 ipython>=8.14.0
+click>=8.1.0
 jupyter>=1.0.0

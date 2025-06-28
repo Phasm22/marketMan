@@ -13,6 +13,7 @@ import subprocess
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.integrations.pushover_utils import send_pushover_notification, send_energy_alert, test_pushover
+from src.integrations.pushover_client import pushover_notifier, test_pushover as test_enhanced_pushover
 
 def main():
     parser = argparse.ArgumentParser(description="MarketMan CLI Tools")
@@ -33,6 +34,16 @@ def main():
     send_parser.add_argument('--title', default='MarketMan Alert', help='Notification title')
     send_parser.add_argument('--priority', type=int, default=0, help='Priority (-2 to 2)')
     
+    # Pushover command
+    pushover_parser = subparsers.add_parser('pushover', help='Pushover notification management')
+    pushover_parser.add_argument('action', choices=['test', 'status', 'signal', 'warning'], help='Pushover action')
+    pushover_parser.add_argument('--message', help='Message for signal/warning')
+    pushover_parser.add_argument('--title', help='Title for signal/warning')
+    pushover_parser.add_argument('--confidence', type=int, help='Confidence level (1-10)')
+    pushover_parser.add_argument('--signal', choices=['Bullish', 'Bearish', 'Neutral'], help='Signal type')
+    pushover_parser.add_argument('--etfs', help='Comma-separated list of ETFs')
+    pushover_parser.add_argument('--warning-type', help='Type of risk warning')
+    
     # Service command
     service_parser = subparsers.add_parser('service', help='Service management')
     service_parser.add_argument('action', choices=['install', 'start', 'stop', 'status'], help='Service action')
@@ -40,17 +51,14 @@ def main():
     # Setup command
     setup_parser = subparsers.add_parser('setup', help='Setup and configuration')
     setup_parser.add_argument('--notion', action='store_true', help='Set up Notion database')
+    setup_parser.add_argument('--pushover', action='store_true', help='Set up Pushover credentials')
     
     # Memory command
     memory_parser = subparsers.add_parser('memory', help='Market memory operations')
-    memory_parser.add_argument('--patterns', action='store_true', help='Show recent patterns')
-    memory_parser.add_argument('--stats', action='store_true', help='Show memory statistics')
-    memory_parser.add_argument('--etf', help='Show patterns for specific ETF')
-    memory_parser.add_argument('--days', type=int, default=7, help='Days to look back (default: 7)')
-    memory_parser.add_argument('--cleanup', type=int, help='Clean up data older than N days')
+    memory_parser.add_argument('action', choices=['show', 'clear', 'export'], help='Memory action')
     
-    # Run command (main analysis)
-    run_parser = subparsers.add_parser('run', help='Run news analysis')
+    # Run command
+    run_parser = subparsers.add_parser('run', help='Run MarketMan analysis')
     run_parser.add_argument('--test', action='store_true', help='Run in test mode')
     
     args = parser.parse_args()
@@ -60,9 +68,8 @@ def main():
         return
     
     if args.command == 'test':
-        print("🧪 Running all tests with pytest...")
-        result = subprocess.run(['pytest', 'tests/'])
-        sys.exit(result.returncode)
+        print("🧪 Running MarketMan tests...")
+        subprocess.run(['python', '-m', 'pytest', 'tests/', '-v'])
     
     elif args.command == 'monitor':
         from src.monitoring.marketman_monitor import MarketManMonitor
@@ -96,6 +103,60 @@ def main():
         success = send_pushover_notification(args.message, args.title, args.priority)
         sys.exit(0 if success else 1)
     
+    elif args.command == 'pushover':
+        if args.action == 'test':
+            print("🧪 Testing Pushover connectivity...")
+            success = test_enhanced_pushover()
+            if success:
+                print("✅ Pushover test successful!")
+            else:
+                print("❌ Pushover test failed. Check your credentials.")
+            sys.exit(0 if success else 1)
+        
+        elif args.action == 'status':
+            print("📊 Pushover Status:")
+            status = pushover_notifier.get_rate_limit_status()
+            for key, value in status.items():
+                print(f"  {key}: {value}")
+        
+        elif args.action == 'signal':
+            if not all([args.message, args.title, args.confidence, args.signal]):
+                print("❌ Missing required arguments for signal. Use --message, --title, --confidence, --signal")
+                sys.exit(1)
+            
+            etfs = args.etfs.split(',') if args.etfs else None
+            success = pushover_notifier.send_trading_signal(
+                signal=args.signal,
+                confidence=args.confidence,
+                title=args.title,
+                reasoning=args.message,
+                etfs=etfs
+            )
+            
+            if success:
+                print("✅ Trading signal sent successfully!")
+            else:
+                print("❌ Failed to send trading signal")
+            sys.exit(0 if success else 1)
+        
+        elif args.action == 'warning':
+            if not all([args.message, args.warning_type]):
+                print("❌ Missing required arguments for warning. Use --message, --warning-type")
+                sys.exit(1)
+            
+            etfs = args.etfs.split(',') if args.etfs else None
+            success = pushover_notifier.send_risk_warning(
+                warning_type=args.warning_type,
+                message=args.message,
+                affected_symbols=etfs
+            )
+            
+            if success:
+                print("✅ Risk warning sent successfully!")
+            else:
+                print("❌ Failed to send risk warning")
+            sys.exit(0 if success else 1)
+    
     elif args.command == 'service':
         service_file = '/root/marketMan/marketman.service'
         
@@ -111,84 +172,44 @@ def main():
     
     elif args.command == 'setup':
         if args.notion:
-            print("🗄️ Setting up enhanced Notion database with memory support...")
-            subprocess.run(['python', 'notion_setup_enhanced.py', '--create'])
-        else:
-            print("Please specify --notion for database setup")
-            sys.exit(1)
+            print("📝 Setting up Notion database...")
+            subprocess.run(['python', '-m', 'src.integrations.notion_phase4', 'setup'])
+        
+        if args.pushover:
+            print("📱 Setting up Pushover credentials...")
+            print("1. Go to https://pushover.net/")
+            print("2. Create an account and get your User Key")
+            print("3. Create a new application and get the API Token")
+            print("4. Edit config/settings.yaml and add your credentials:")
+            print("   integrations:")
+            print("     pushover:")
+            print("       api_token: 'your_api_token'")
+            print("       user_token: 'your_user_key'")
+            print("5. Test with: marketman pushover test")
     
     elif args.command == 'memory':
-        from src.core.market_memory import MarketMemory
+        from src.core.database.market_memory import MarketMemory
         memory = MarketMemory()
         
-        if args.cleanup is not None:
-            print(f"🧹 Cleaning up data older than {args.cleanup} days...")
-            result = memory.cleanup_old_data(args.cleanup)
-            
-            if 'error' in result:
-                print(f"❌ Error during cleanup: {result['error']}")
-                sys.exit(1)
-            else:
-                deleted_signals = result.get('deleted_signals', 0)
-                deleted_patterns = result.get('deleted_patterns', 0)
-                cutoff_date = result.get('cutoff_date', 'unknown')
-                
-                if deleted_signals + deleted_patterns > 0:
-                    print(f"✅ Cleanup complete: {deleted_signals} signals and {deleted_patterns} patterns deleted")
-                    print(f"   (Records older than {cutoff_date})")
-                else:
-                    print(f"✅ Cleanup complete: No records older than {args.cleanup} days found")
-                    print(f"   (Would delete records older than {cutoff_date})")
+        if args.action == 'show':
+            print("🧠 Market Memory Contents:")
+            patterns = memory.get_all_patterns()
+            for pattern in patterns:
+                print(f"  {pattern}")
         
-        elif args.stats:
-            print("📊 Memory Statistics:")
-            stats = memory.get_memory_stats()
-            print(f"   Total signals: {stats.get('total_signals', 0)}")
-            print(f"   Recent signals (7 days): {stats.get('recent_activity', 0)}")
-            breakdown = stats.get('signal_breakdown', {})
-            if breakdown:
-                print("   Signal breakdown:")
-                for signal_type, count in breakdown.items():
-                    print(f"     {signal_type}: {count}")
-            date_range = stats.get('date_range', (None, None))
-            if date_range[0] and date_range[1]:
-                print(f"   Date range: {date_range[0]} to {date_range[1]}")
-            db_path = stats.get('db_path', 'marketman_memory.db')
-            try:
-                if os.path.exists(db_path):
-                    size_mb = os.path.getsize(db_path) / (1024 * 1024)
-                    print(f"   Database size: {size_mb:.2f} MB")
-                else:
-                    print("   Database: Not yet created")
-            except Exception as e:
-                print(f"   Database size: Unable to determine ({e})")
-            try:
-                patterns = memory.detect_patterns()
-                print(f"   Active patterns: {len(patterns)}")
-            except:
-                print("   Active patterns: 0")
+        elif args.action == 'clear':
+            print("🧹 Clearing market memory...")
+            memory.clear_all_patterns()
+            print("✅ Market memory cleared")
         
-        elif args.patterns or args.etf:
-            etf_filter = args.etf.upper() if args.etf else None
-            patterns = memory.detect_patterns(etf_symbol=etf_filter)
-            if not patterns:
-                filter_text = f" for {etf_filter}" if etf_filter else ""
-                print(f"🤷 No patterns found{filter_text}")
-            else:
-                print(f"🧠 Recent Market Patterns:")
-                for pattern in patterns:
-                    print(f"   • {pattern['description']}")
-        else:
-            signals = memory.get_recent_signals(args.days)
-            if not signals:
-                print(f"📭 No signals found in the last {args.days} days")
-            else:
-                print(f"📈 Last {len(signals)} signals ({args.days} days):")
-                for signal in signals[:10]:
-                    etfs_str = ", ".join(signal['etfs'][:3])
-                    print(f"   • {signal['date']} - {signal['signal']} ({signal['confidence']}/10) - {etfs_str}")
-                    print(f"     {signal['title'][:80]}...")
-                    print()
+        elif args.action == 'export':
+            print("📤 Exporting market memory...")
+            patterns = memory.get_all_patterns()
+            with open('market_memory_export.json', 'w') as f:
+                import json
+                json.dump(patterns, f, indent=2, default=str)
+            print("✅ Market memory exported to market_memory_export.json")
+
 
 if __name__ == "__main__":
     main()
