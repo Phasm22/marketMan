@@ -310,39 +310,31 @@ ETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
         )
 
         if success:
-            # Mark batch as sent
+            # Mark batch as sent using database abstraction
             batch_id = hashlib.md5(
                 f"{datetime.now().isoformat()}{strategy.value}".encode()
             ).hexdigest()[:12]
             alert_ids = [alert.alert_id for alert in alerts]
 
-            with sqlite3.connect(self.db_path) as conn:
-                # Record the sent batch
-                conn.execute(
-                    """
-                    INSERT INTO sent_batches 
-                    (batch_id, strategy, alert_ids, summary, sent_at, notification_success)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        batch_id,
-                        strategy.value,
-                        json.dumps(alert_ids),
-                        summary,
-                        datetime.now().isoformat(),
-                        success,
-                    ),
-                )
-
+            # Record the sent batch
+            batch_data = {
+                "batch_id": batch_id,
+                "strategy": strategy.value,
+                "alert_ids": json.dumps(alert_ids),
+                "summary": summary,
+                "sent_at": datetime.now().isoformat(),
+                "notification_success": success,
+            }
+            
+            try:
+                self.db.store_batch(batch_data)
+                
                 # Remove sent alerts from pending
-                placeholders = ",".join(["?" for _ in alert_ids])
-                conn.execute(
-                    f"""
-                    DELETE FROM pending_alerts 
-                    WHERE alert_id IN ({placeholders})
-                """,
-                    alert_ids,
-                )
+                for alert_id in alert_ids:
+                    self.db.delete_alert(alert_id)
+                    
+            except Exception as e:
+                logger.error(f"Error recording batch: {e}")
 
         return success
 
@@ -360,65 +352,25 @@ ETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
     def cleanup_old_batches(self, days_old: int = 7):
         """Clean up old batch records"""
         cutoff = datetime.now() - timedelta(days=days_old)
-
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                DELETE FROM sent_batches 
-                WHERE sent_at < ?
-            """,
-                (cutoff.isoformat(),),
-            )
-
-            # Also clean up any orphaned pending alerts
-            conn.execute(
-                """
-                DELETE FROM pending_alerts 
-                WHERE created_at < ?
-            """,
-                (cutoff.isoformat(),),
-            )
+        
+        try:
+            # Clean up old batches and orphaned alerts
+            self.db.cleanup_old_data(cutoff.isoformat())
+        except Exception as e:
+            logger.error(f"Error cleaning up old batches: {e}")
 
     def get_batch_stats(self) -> Dict:
         """Get statistics about batching performance"""
-        with sqlite3.connect(self.db_path) as conn:
-            # Pending alerts by strategy
-            pending_stats = {}
-            for strategy in BatchStrategy:
-                cursor = conn.execute(
-                    """
-                    SELECT COUNT(*) FROM pending_alerts 
-                    WHERE batch_strategy = ?
-                """,
-                    (strategy.value,),
-                )
-                pending_stats[strategy.value] = cursor.fetchone()[0]
-
-            # Recent batches (last 7 days)
-            week_ago = (datetime.now() - timedelta(days=7)).isoformat()
-            cursor = conn.execute(
-                """
-                SELECT strategy, COUNT(*), 
-                       SUM(CASE WHEN notification_success THEN 1 ELSE 0 END) as successful
-                FROM sent_batches 
-                WHERE sent_at > ? 
-                GROUP BY strategy
-            """,
-                (week_ago,),
-            )
-
-            recent_batches = {}
-            for row in cursor.fetchall():
-                recent_batches[row[0]] = {
-                    "total_batches": row[1],
-                    "successful": row[2],
-                    "success_rate": row[2] / row[1] if row[1] > 0 else 0,
-                }
-
+        try:
+            # Get stats from database abstraction
+            stats = self.db.get_stats()
+            return stats
+        except Exception as e:
+            logger.error(f"Error getting batch stats: {e}")
             return {
-                "pending_by_strategy": pending_stats,
-                "recent_batches": recent_batches,
-                "total_pending": sum(pending_stats.values()),
+                "pending_by_strategy": {},
+                "recent_batches": {},
+                "total_pending": 0,
             }
 
 

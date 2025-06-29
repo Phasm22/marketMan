@@ -97,15 +97,18 @@ def filter_high_conviction_etfs(session_analyses, min_mentions=2):
 
 
 def check_technical_support(etf, market_data, support_threshold=0.03):
-    """Check if ETF price is not overextended (>3% above support)"""
-    price_data = market_data.get(etf, {})
-    current_price = price_data.get("price", 0)
+    """Check if ETF has acceptable technical support (not overextended)"""
+    if not market_data or etf not in market_data:
+        logger.warning(f"⚠️ No market data for {etf}, skipping technical filter")
+        return True, 0.0  # Allow through if no data available
 
-    if current_price == 0:
-        return False, 0  # No price data available
+    etf_data = market_data[etf]
+    current_price = etf_data.get("price", 0)
+    daily_change = etf_data.get("change_pct", 0) / 100  # Convert percentage to decimal
 
-    # Simple support estimation using daily change as volatility proxy
-    daily_change = price_data.get("change_percent", 0) / 100
+    if current_price <= 0:
+        logger.warning(f"⚠️ Invalid price for {etf}, skipping technical filter")
+        return True, 0.0  # Allow through if invalid price
 
     # Estimate support as recent low (conservative approach)
     # Using 2x daily volatility as support distance proxy

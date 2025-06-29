@@ -242,7 +242,14 @@ class NotionReporter:
     def _build_position_recommendations(self, strong_buys, strong_sells, watchlist):
         """Build enhanced position recommendations with average confidence and liquidity context"""
         # Import the conviction tier function
-        from .report_consolidator import get_conviction_tier, safe_get_position_data
+        try:
+            from ..core.journal.report_consolidator import get_conviction_tier, safe_get_position_data
+        except ImportError:
+            # Fallback for direct execution
+            import sys
+            import os
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+            from src.core.journal.report_consolidator import get_conviction_tier, safe_get_position_data
 
         position_recommendations = []
 
@@ -523,7 +530,14 @@ class NotionReporter:
 
         all_positions = strong_buys + strong_sells
         if all_positions:
-            from .report_consolidator import safe_get_position_data
+            try:
+                from ..core.journal.report_consolidator import safe_get_position_data
+            except ImportError:
+                # Fallback for direct execution
+                import sys
+                import os
+                sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                from src.core.journal.report_consolidator import safe_get_position_data
 
             for pos in all_positions[:3]:  # Top 3 positions
                 safe_pos = safe_get_position_data(pos)
@@ -596,7 +610,15 @@ class NotionReporter:
         """Build consolidated execution playbook with specific timeframes"""
         blocks = []
 
-        from .report_consolidator import get_conviction_tier, safe_get_position_data
+        try:
+            from ..core.journal.report_consolidator import get_conviction_tier, safe_get_position_data
+        except ImportError:
+            # Fallback for direct execution
+            import sys
+            import os
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+            from src.core.journal.report_consolidator import get_conviction_tier, safe_get_position_data
+            
         from datetime import datetime, timedelta
 
         # Calculate average conviction for overall strategy

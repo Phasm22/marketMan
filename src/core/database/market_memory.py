@@ -193,10 +193,11 @@ class MarketMemory:
 
                     pattern = {
                         "type": "consecutive",
-                        "etf": etf,
-                        "signal": current_signal,
-                        "streak": current_streak,
-                        "avg_confidence": avg_confidence,
+                        "pattern_type": "consecutive",
+                        "etf_symbol": etf,
+                        "signal_type": current_signal,
+                        "consecutive_days": current_streak,
+                        "average_confidence": avg_confidence,
                         "start_date": streak_start["date"],
                         "end_date": signals[i - 1]["date"],
                         "description": self._generate_consecutive_description(
@@ -216,10 +217,11 @@ class MarketMemory:
             avg_confidence = sum(confidences) / len(confidences)
             pattern = {
                 "type": "consecutive",
-                "etf": etf,
-                "signal": current_signal,
-                "streak": current_streak,
-                "avg_confidence": avg_confidence,
+                "pattern_type": "consecutive",
+                "etf_symbol": etf,
+                "signal_type": current_signal,
+                "consecutive_days": current_streak,
+                "average_confidence": avg_confidence,
                 "start_date": streak_start["date"],
                 "end_date": signals[-1]["date"],
                 "description": self._generate_consecutive_description(
@@ -252,7 +254,8 @@ class MarketMemory:
                 ):
                     pattern = {
                         "type": "reversal",
-                        "etf": etf,
+                        "pattern_type": "reversal",
+                        "etf_symbol": etf,
                         "from_signal": prev_signal["signal"],
                         "to_signal": curr_signal["signal"],
                         "from_confidence": prev_signal["confidence"],
@@ -285,7 +288,8 @@ class MarketMemory:
         if signal_changes >= self.min_consecutive:
             pattern = {
                 "type": "volatility",
-                "etf": etf,
+                "pattern_type": "volatility",
+                "etf_symbol": etf,
                 "signal_changes": signal_changes,
                 "period_days": len(recent_window),
                 "date": recent_window[-1]["date"],
@@ -340,7 +344,7 @@ class MarketMemory:
                 for pattern in patterns:
                     if pattern["type"] == "consecutive":
                         # Only add if current signal matches the pattern
-                        if pattern["signal"] == current_analysis.get("signal"):
+                        if pattern["signal_type"] == current_analysis.get("signal"):
                             insights.append(pattern["description"])
 
                     elif pattern["type"] == "reversal":
