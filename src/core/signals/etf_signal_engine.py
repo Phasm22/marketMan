@@ -581,7 +581,7 @@ Otherwise, return:
 def _validate_batch_analysis(analysis_result):
     """Validate batch analysis results against hard rules with quality considerations"""
     # Check confidence threshold
-    if analysis_result.get("confidence", 0) < 7:
+    if analysis_result.get("confidence", 0) < 7:  # Restored from 3
         logger.debug(f"Batch confidence below threshold: {analysis_result.get('confidence')}")
         return False
     

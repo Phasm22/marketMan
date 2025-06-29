@@ -355,7 +355,7 @@ class NewsFilter:
         
         # 9. Source validation (if enabled)
         if self.enable_source_validation:
-            if news_item.source_priority < 2:  # Very low priority sources
+            if news_item.source_priority < 2:  # Restored from 1
                 return False, f"low_priority_source_{news_item.source_priority}"
         
         return True, "accepted"

@@ -190,10 +190,13 @@ class NewsBatcher:
         """Get existing batch or create new one for the group"""
         batch_id = f"{group_key}_{int(time.time())}"
         
+        logger.debug(f"🔍 Creating batch for group '{group_key}' with {len(items)} items (min_size={self.min_batch_size})")
+        
         # Check if we already have a pending batch for this group
         existing_batch = self.pending_batches.get(group_key)
         
         if existing_batch:
+            logger.debug(f"📦 Adding {len(items)} items to existing batch '{group_key}'")
             # Add items to existing batch
             existing_batch.items.extend(items)
             
@@ -211,10 +214,12 @@ class NewsBatcher:
         else:
             # Create new batch
             if len(items) >= self.min_batch_size:
+                logger.debug(f"✅ Creating immediate batch for {len(items)} items (>= {self.min_batch_size})")
                 # Create batch immediately if we have enough items
                 batch = self._create_batch(group_key, items)
                 return batch
             else:
+                logger.debug(f"⏳ Storing pending batch for {len(items)} items (< {self.min_batch_size})")
                 # Store as pending batch
                 batch = self._create_batch(group_key, items)
                 self.pending_batches[group_key] = batch
@@ -245,15 +250,25 @@ class NewsBatcher:
     
     def _is_batch_ready(self, batch: NewsBatch) -> bool:
         """Check if a batch is ready for processing"""
+        logger.debug(f"🔍 Checking if batch '{batch.batch_id}' is ready: size={batch.batch_size}, max_size={self.max_headlines_per_batch}, min_size={self.min_batch_size}")
+        
         # Check if batch is full
         if batch.batch_size >= self.max_headlines_per_batch:
+            logger.debug(f"✅ Batch '{batch.batch_id}' ready: full size ({batch.batch_size} >= {self.max_headlines_per_batch})")
             return True
         
         # Check if batch has minimum size and has been waiting long enough
         if batch.batch_size >= self.min_batch_size:
             batch_age = datetime.now() - batch.created_at
-            if batch_age.total_seconds() >= self.max_batch_wait_time:
+            age_seconds = batch_age.total_seconds()
+            logger.debug(f"⏰ Batch '{batch.batch_id}' age: {age_seconds:.1f}s (need {self.max_batch_wait_time}s)")
+            if age_seconds >= self.max_batch_wait_time:
+                logger.debug(f"✅ Batch '{batch.batch_id}' ready: waited long enough ({age_seconds:.1f}s >= {self.max_batch_wait_time}s)")
                 return True
+            else:
+                logger.debug(f"⏳ Batch '{batch.batch_id}' not ready: waiting ({age_seconds:.1f}s < {self.max_batch_wait_time}s)")
+        else:
+            logger.debug(f"❌ Batch '{batch.batch_id}' not ready: too small ({batch.batch_size} < {self.min_batch_size})")
         
         return False
     
