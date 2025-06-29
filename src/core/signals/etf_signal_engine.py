@@ -216,94 +216,56 @@ def analyze_thematic_etf_news(
         else:
             logger.debug(f"🤖 Response received ({len(result)} chars)")
 
-        # Clean up common JSON formatting issues
-        result = result.replace("```json", "").replace("```", "")
-        result = result.strip()
+        # Parse JSON response
+        result = result.replace("```json", "").replace("```", "").strip()
+        
+        # Try to extract JSON from the response (handle extra text)
         try:
-            json_result = json.loads(result)
-            # Hard rules
-            hard_rule_fail = False
-            hard_rule_notes = []
-            # 1. confidence >= 7
-            if json_result.get("confidence", 0) < 7:
-                hard_rule_fail = True
-                hard_rule_notes.append(
-                    f"Confidence below threshold: {json_result.get('confidence')}"
-                )
-            # 2. signal is Bullish or Bearish
-            if json_result.get("signal", "").lower() not in ["bullish", "bearish"]:
-                hard_rule_fail = True
-                hard_rule_notes.append(f"Signal not actionable: {json_result.get('signal')}")
-            # 3. affected_etfs contains at least one specialized ETF
-            specialized_etfs = [
-                "BOTZ",
-                "ITA",
-                "ICLN",
-                "URA",
-                "XAR",
-                "DFEN",
-                "PPA",
-                "ROBO",
-                "IRBO",
-                "ARKQ",
-                "SMH",
-                "SOXX",
-                "TAN",
-                "QCLN",
-                "PBW",
-                "LIT",
-                "REMX",
-                "URNM",
-                "NLR",
-                "VIXY",
-                "VXX",
-                "SQQQ",
-                "SPXS",
-            ]
-            if not any(etf in specialized_etfs for etf in json_result.get("affected_etfs", [])):
-                hard_rule_fail = True
-                hard_rule_notes.append("No specialized ETF in affected_etfs")
-            if hard_rule_fail:
-                logger.info(
-                    f"🚫 Hard rule filter: {'; '.join(hard_rule_notes)} | {headline[:50]}..."
-                )
+            # Find the first { and last } to extract JSON
+            start = result.find('{')
+            end = result.rfind('}') + 1
+            if start != -1 and end != 0:
+                json_str = result[start:end]
+                json_result = json.loads(json_str)
+            else:
+                # Fallback: try to parse the whole thing
+                json_result = json.loads(result)
+            
+            # Apply hard rules to batch analysis
+            if not _validate_batch_analysis(json_result):
+                logger.info(f"🚫 Batch analysis failed validation: {news_batch.batch_id}")
                 return None
-            # Soft rules (technical scoring)
-            score, notes = technical_score(rsi, macd, bollinger)
-            json_result["technical_score"] = score
-            json_result["technical_notes"] = notes
-            if DEBUG_MODE:
-                logger.debug(f"🧪 Technical score: {score} | Notes: {notes}")
-            # Add metadata to the analysis result
+            
+            # Add metadata
+            json_result["batch_id"] = news_batch.batch_id
+            json_result["batch_size"] = news_batch.batch_size
+            json_result["common_tickers"] = news_batch.common_tickers
+            json_result["common_keywords"] = news_batch.common_keywords
             json_result["analysis_timestamp"] = datetime.now().isoformat()
-            # Store the analysis in memory for contextual tracking
+            json_result["source_headlines"] = [item.title for item in news_batch.items]
+            json_result["technicals_included"] = len(technicals) if technicals else 0
+            json_result["patterns_detected"] = pattern_results.get("patterns_detected", 0) if pattern_results else 0
+            json_result["patterns"] = pattern_results.get("patterns", []) if pattern_results else []
+            
+            # Store in memory if available
             if memory:
                 try:
-                    memory.store_signal(json_result, headline)
-                    logger.debug("💾 Analysis stored in MarketMemory")
+                    memory.store_signal(json_result, f"Batch: {news_batch.batch_id}")
+                    logger.debug("💾 Batch analysis stored in MarketMemory")
                 except Exception as mem_error:
-                    logger.warning(f"⚠️ Failed to store analysis in memory: {mem_error}")
+                    logger.warning(f"⚠️ Failed to store batch analysis in memory: {mem_error}")
+            
+            logger.info(f"✅ Batch analysis complete: {json_result.get('signal', 'Unknown')} signal, confidence {json_result.get('confidence', 0)}")
             return json_result
+            
         except json.JSONDecodeError as e:
-            logger.error(f"❌ Failed to parse MarketMan response as JSON: {e}")
+            logger.error(f"❌ Failed to parse batch analysis response as JSON: {e}")
             if DEBUG_MODE:
                 logger.error(f"Raw response: {result}")
-            if "not energy related" in result.lower() or "not_financial" in result.lower():
-                logger.info(f"🚫 MarketMan detected non-ETF content: {headline[:50]}...")
-                return None
-            return {
-                "relevance": "financial",
-                "sector": "Thematic",
-                "signal": "Neutral",
-                "confidence": 1,
-                "affected_etfs": [],
-                "reasoning": "Failed to parse AI response",
-                "raw_response": result,
-                "technical_score": 0,
-                "technical_notes": "JSON parse error; no technicals",
-            }
+            return None
+            
     except Exception as e:
-        logger.error(f"❌ Error calling OpenAI API: {e}")
+        logger.error(f"❌ Error calling OpenAI API for batch analysis: {e}")
         return None
 
 
@@ -395,8 +357,18 @@ def analyze_news_batch(news_batch, etf_prices=None, contextual_insight=None, mem
         
         # Parse JSON response
         result = result.replace("```json", "").replace("```", "").strip()
+        
+        # Try to extract JSON from the response (handle extra text)
         try:
-            json_result = json.loads(result)
+            # Find the first { and last } to extract JSON
+            start = result.find('{')
+            end = result.rfind('}') + 1
+            if start != -1 and end != 0:
+                json_str = result[start:end]
+                json_result = json.loads(json_str)
+            else:
+                # Fallback: try to parse the whole thing
+                json_result = json.loads(result)
             
             # Apply hard rules to batch analysis
             if not _validate_batch_analysis(json_result):
