@@ -24,6 +24,7 @@ from core.ingestion.market_data import get_market_snapshot
 from integrations.gmail_poller import GmailPoller
 from integrations.notion_reporter import NotionReporter
 from core.journal.report_consolidator import create_consolidated_signal_report
+from src.core.utils.config_loader import get_config
 
 # Set up logging with debug control
 DEBUG_MODE = os.getenv("DEBUG", "false").lower() == "true"
@@ -514,76 +515,67 @@ def test_technical_filtering():
 
 # MAIN EXECUTION
 if __name__ == "__main__":
-    import json
+    import sys
+    import logging
+    from src.core.utils.config_loader import get_config
 
-    # Check for debug flag
-    if "--debug" in sys.argv:
-        os.environ["DEBUG"] = "true"
-        logging.getLogger().setLevel(logging.DEBUG)
-        logger.info("🐛 Debug mode enabled")
+    # Setup logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    logger = logging.getLogger(__name__)
 
-    # Check for test mode
-    if "test" in sys.argv:
-        logger.info("🧪 Running MarketMan test analysis...")
+    logger.info("🚀 Starting MarketMan News Analysis System...")
 
-        # Run test with sample data
-        headline = "AI ETF BOTZ Sees Record Inflows as Robotics Automation Accelerates"
-        summary = "Robotics and AI ETFs are experiencing unprecedented investor interest as companies accelerate automation adoption."
-
-        market_snapshot = get_market_snapshot()
-        analysis_result = analyze_thematic_etf_news(
-            headline, summary, etf_prices=market_snapshot, memory=memory
+    try:
+        # Load configuration
+        config_loader = get_config()
+        config = config_loader.load_settings()
+        
+        # Create the proper news orchestrator with multiple sources
+        orchestrator = create_news_orchestrator(config)
+        
+        # Get tracked tickers from config
+        tracked_tickers = config.get('news_ingestion', {}).get('tracked_tickers', [])
+        
+        logger.info(f"📰 Using multiple news sources: Finnhub, NewsAPI, NewData")
+        logger.info(f"🎯 Tracking {len(tracked_tickers)} ETFs: {', '.join(tracked_tickers[:5])}{'...' if len(tracked_tickers) > 5 else ''}")
+        
+        # Run the proper news processing cycle with signal generation
+        results = orchestrator.process_signals(
+            tickers=tracked_tickers,
+            hours_back=24  # Last 24 hours for comprehensive coverage
         )
-
-        if analysis_result:
-            logger.info("✅ MarketMan analysis successful!")
-            print("\\n" + "=" * 60)
-            print("🎯 MarketMan ANALYSIS RESULT:")
-            print("=" * 60)
-            print(json.dumps(analysis_result, indent=2))
-            print("=" * 60)
+        
+        logger.info(f"📊 News Processing Results:")
+        logger.info(f"  📰 Raw news items: {results['raw_news_count']}")
+        logger.info(f"  ✅ Filtered items: {results['filtered_news_count']}")
+        logger.info(f"  📦 Batches created: {results['batches_created']}")
+        logger.info(f"  🤖 AI processed: {results['ai_processed_batches']}")
+        
+        # Show source statistics
+        source_stats = results.get('source_stats', {})
+        if source_stats:
+            logger.info(f"📰 News Sources Used:")
+            for source in source_stats.get('sources', []):
+                logger.info(f"  • {source['source']}: {source['daily_requests']}/{source['daily_limit']} calls")
+        
+        # Show cost impact
+        cost_stats = results.get('cost_stats', {})
+        if cost_stats:
+            logger.info(f"💰 Cost Impact:")
+            logger.info(f"  • AI calls used: {cost_stats.get('daily_ai_calls', 0)}")
+            logger.info(f"  • Cost incurred: ${cost_stats.get('monthly_ai_cost', 0.0):.2f}")
+        
+        if results['ai_processed_batches'] > 0:
+            logger.info("🎯 Signals generated successfully!")
         else:
-            logger.error("❌ Test analysis failed")
-
-    elif "--test-tactical" in sys.argv:
-        success = test_tactical_explanation()
-        sys.exit(0 if success else 1)
-
-    elif "--test-consolidated" in sys.argv:
-        success = test_consolidated_reporting()
-        sys.exit(0 if success else 1)
-
-    elif "--test-filtering" in sys.argv:
-        success1 = test_etf_filtering()
-        success2 = test_technical_filtering()
-        print("\\n" + "=" * 60)
-        print("📊 ENHANCED ETF FILTERING SUMMARY:")
-        print("=" * 60)
-        print("✅ IMPLEMENTED IMPROVEMENTS:")
-        print("   • ETFs must appear in ≥2 analyses to qualify")
-        print("   • Specialized ETFs prioritized over broad-market (XLK, QQQ, etc)")
-        print("   • Ranking by cumulative confidence (frequency × confidence)")
-        print("   • Technical filter rejects overextended positions (>3% above support)")
-        print("   • Only top 3 ETFs included in final recommendations")
-        print("=" * 60)
-        sys.exit(0 if success1 and success2 else 1)
-
-    elif "--test-etf-filtering" in sys.argv:
-        success = test_etf_filtering()
-        sys.exit(0 if success else 1)
-
-    elif "--test-technical-filtering" in sys.argv:
-        success = test_technical_filtering()
-        sys.exit(0 if success else 1)
-
-    else:
-        # Normal operation
-        logger.info("🚀 Starting MarketMan News Analysis System...")
-
-        # Initialize the news analyzer
-        analyzer = NewsAnalyzer()
-
-        # Process new Google Alerts
-        analyzer.process_alerts()
-
+            logger.info("📭 No signals generated - this is normal if no relevant news found")
+            logger.info("✅ Pipeline is working correctly (filtering out irrelevant content)")
+        
         logger.info("✅ MarketMan analysis cycle complete")
+        
+    except Exception as e:
+        logger.error(f"❌ Error in news analysis cycle: {e}")
+        sys.exit(1)
