@@ -731,6 +731,168 @@ class AlertBatchDB(DatabaseManager):
         affected = self.execute_update(query, (status, batch_id))
         return affected > 0
 
+    def store_batch(self, batch_data: Dict[str, Any]) -> int:
+        """
+        Store a batch record with all details.
+
+        Args:
+            batch_data: Dictionary containing batch information including:
+                - batch_id: Unique batch identifier
+                - strategy: Batching strategy used
+                - alert_ids: JSON string of alert IDs
+                - summary: Batch summary text
+                - sent_at: Timestamp when sent
+                - notification_success: Boolean success status
+
+        Returns:
+            ID of the inserted batch
+        """
+        # First create the batch record
+        batch_query = """
+        INSERT INTO batches (batch_id, strategy, status, processed_at)
+        VALUES (?, ?, ?, ?)
+        """
+        
+        batch_params = (
+            batch_data.get("batch_id"),
+            batch_data.get("strategy"),
+            "sent" if batch_data.get("notification_success") else "failed",
+            batch_data.get("sent_at"),
+        )
+
+        with self.get_connection() as conn:
+            cursor = conn.execute(batch_query, batch_params)
+            batch_id = cursor.lastrowid
+            
+            # Create a sent_batches table if it doesn't exist to store additional details
+            sent_batches_schema = """
+            CREATE TABLE IF NOT EXISTS sent_batches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                batch_id TEXT UNIQUE NOT NULL,
+                strategy TEXT NOT NULL,
+                alert_ids TEXT,
+                summary TEXT,
+                sent_at TEXT,
+                notification_success BOOLEAN,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+            conn.execute(sent_batches_schema)
+            
+            # Store detailed batch information
+            sent_batch_query = """
+            INSERT OR REPLACE INTO sent_batches 
+            (batch_id, strategy, alert_ids, summary, sent_at, notification_success)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """
+            
+            sent_batch_params = (
+                batch_data.get("batch_id"),
+                batch_data.get("strategy"),
+                batch_data.get("alert_ids"),
+                batch_data.get("summary"),
+                batch_data.get("sent_at"),
+                batch_data.get("notification_success"),
+            )
+            
+            conn.execute(sent_batch_query, sent_batch_params)
+            conn.commit()
+            
+        return batch_id
+
+    def delete_alert(self, alert_id: str) -> bool:
+        """
+        Delete an alert by its ID.
+
+        Args:
+            alert_id: Alert identifier
+
+        Returns:
+            True if successful
+        """
+        query = "DELETE FROM alerts WHERE content LIKE ?"
+        affected = self.execute_update(query, (f'%"alert_id": "{alert_id}"%',))
+        return affected > 0
+
+    def cleanup_old_data(self, cutoff_date: str) -> int:
+        """
+        Clean up old batch and alert data.
+
+        Args:
+            cutoff_date: ISO format date string
+
+        Returns:
+            Number of deleted records
+        """
+        queries = [
+            ("DELETE FROM batches WHERE processed_at < ?", (cutoff_date,)),
+            ("DELETE FROM sent_batches WHERE sent_at < ?", (cutoff_date,)),
+            ("DELETE FROM alerts WHERE created_at < ?", (cutoff_date,)),
+        ]
+
+        total_deleted = 0
+        with self.get_connection() as conn:
+            for query, params in queries:
+                cursor = conn.execute(query, params)
+                total_deleted += cursor.rowcount
+            conn.commit()
+
+        return total_deleted
+
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Get batch statistics.
+
+        Returns:
+            Dictionary with batch statistics
+        """
+        stats = {
+            "pending_by_strategy": {},
+            "recent_batches": {},
+            "total_pending": 0,
+        }
+
+        # Get pending alerts by strategy
+        pending_query = """
+        SELECT 
+            json_extract(content, '$.strategy') as strategy,
+            COUNT(*) as count
+        FROM alerts 
+        WHERE processed = FALSE 
+        GROUP BY strategy
+        """
+        
+        pending_results = self.execute_query(pending_query)
+        for row in pending_results:
+            strategy = row.get("strategy", "unknown")
+            stats["pending_by_strategy"][strategy] = row.get("count", 0)
+            stats["total_pending"] += row.get("count", 0)
+
+        # Get recent batches (last 7 days)
+        week_ago = "datetime('now', '-7 days')"
+        recent_query = f"""
+        SELECT 
+            strategy,
+            COUNT(*) as total_batches,
+            SUM(CASE WHEN notification_success THEN 1 ELSE 0 END) as successful
+        FROM sent_batches 
+        WHERE sent_at > {week_ago}
+        GROUP BY strategy
+        """
+        
+        recent_results = self.execute_query(recent_query)
+        for row in recent_results:
+            strategy = row.get("strategy", "unknown")
+            total = row.get("total_batches", 0)
+            successful = row.get("successful", 0)
+            stats["recent_batches"][strategy] = {
+                "total_batches": total,
+                "successful": successful,
+                "success_rate": successful / total if total > 0 else 0,
+            }
+
+        return stats
+
 
 # Global database instances
 market_memory_db = MarketMemoryDB()

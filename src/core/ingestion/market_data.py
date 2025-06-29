@@ -51,7 +51,9 @@ MAJOR_ETFS = [
 
 
 def get_etf_prices(etf_symbols=None, rate_limit=True, max_retries=2):
-    """Fetch current ETF prices for market snapshot with improved rate limiting and error handling"""
+    """Fetch current ETF prices for market snapshot with improved rate limiting and error handling.
+    Returns: (prices: dict, used_fallback: bool, fallback_reason: str or None)
+    """
     if etf_symbols is None:
         etf_symbols = MAJOR_ETFS
 
@@ -146,17 +148,20 @@ def get_etf_prices(etf_symbols=None, rate_limit=True, max_retries=2):
         
         # If we have very few successful fetches, use fallback mock data
         if success_count < 3:
-            logger.warning("⚠️ Too few successful price fetches, using fallback mock data")
-            return _get_fallback_mock_data(etf_symbols)
+            reason = "Too few successful price fetches, using fallback mock data"
+            logger.warning(f"⚠️ {reason}")
+            return _get_fallback_mock_data(etf_symbols), True, reason
             
-        return prices
+        return prices, False, None
 
     except ImportError:
-        logger.warning("⚠️ yfinance not installed, using fallback mock data")
-        return _get_fallback_mock_data(etf_symbols)
+        reason = "yfinance not installed, using fallback mock data"
+        logger.warning(f"⚠️ {reason}")
+        return _get_fallback_mock_data(etf_symbols), True, reason
     except Exception as e:
-        logger.warning(f"⚠️ Error fetching ETF prices: {e}, using fallback mock data")
-        return _get_fallback_mock_data(etf_symbols)
+        reason = f"Error fetching ETF prices: {e}, using fallback mock data"
+        logger.warning(f"⚠️ {reason}")
+        return _get_fallback_mock_data(etf_symbols), True, reason
 
 
 def _get_fallback_mock_data(etf_symbols):
@@ -196,7 +201,7 @@ def _get_fallback_mock_data(etf_symbols):
 
 
 def get_market_snapshot():
-    """Get a comprehensive market snapshot with current ETF prices"""
+    """Get a comprehensive market snapshot with current ETF prices, returns (prices, used_fallback, fallback_reason)"""
     logger.debug(f"📊 Fetching market data for strategic context...")
     return get_etf_prices(MAJOR_ETFS)
 

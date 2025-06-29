@@ -275,14 +275,16 @@ ETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
 
         return summary.strip()
 
-    def send_batch(self, strategy: BatchStrategy) -> bool:
-        """Send a batch of alerts using the specified strategy"""
+    def send_batch(self, strategy: BatchStrategy, fallback_warning: str = None) -> bool:
+        """Send a batch of alerts using the specified strategy. If fallback_warning is provided, append it to the Pushover message."""
         alerts = self.get_pending_alerts(strategy)
         if not alerts:
             return False
 
         # Create batch summary
         summary = self.create_batch_summary(alerts, strategy)
+        if fallback_warning:
+            summary += f"\n\n⚠️ [Market Data Warning]\n{fallback_warning}"
 
         # Determine title and priority
         high_conf_count = len([a for a in alerts if a.confidence >= 9])
@@ -338,13 +340,13 @@ ETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
 
         return success
 
-    def process_pending(self) -> Dict[str, bool]:
-        """Process all pending alerts based on their strategies"""
+    def process_pending(self, fallback_warning: str = None) -> Dict[str, bool]:
+        """Process all pending alerts based on their strategies, passing fallback_warning if present"""
         results = {}
 
         for strategy in BatchStrategy:
             if self.should_send_batch(strategy):
-                success = self.send_batch(strategy)
+                success = self.send_batch(strategy, fallback_warning=fallback_warning)
                 results[strategy.value] = success
 
         return results
@@ -407,10 +409,10 @@ def queue_alert(
     return alert.alert_id
 
 
-def process_alert_queue() -> Dict[str, bool]:
-    """Process the alert queue and send any ready batches"""
+def process_alert_queue(fallback_warning: str = None) -> Dict[str, bool]:
+    """Process the alert queue and send any ready batches, passing fallback_warning if present"""
     batcher = AlertBatcher()
-    return batcher.process_pending()
+    return batcher.process_pending(fallback_warning=fallback_warning)
 
 
 def get_queue_stats() -> Dict:

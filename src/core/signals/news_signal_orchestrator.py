@@ -149,7 +149,9 @@ class NewsAnalyzer:
         all_mentioned_etfs = set()
 
         # Get market snapshot once for all analyses
-        market_snapshot = get_market_snapshot()
+        market_snapshot, used_fallback, fallback_reason = get_market_snapshot()
+        self.market_data_fallback = used_fallback
+        self.market_data_fallback_reason = fallback_reason
 
         for alert in alerts:
             logger.info(f"Processing alert for: {alert['search_term']}")
@@ -238,71 +240,72 @@ class NewsAnalyzer:
                 session_analyses, session_timestamp
             )
 
+            notion_url = None  # Initialize outside the if block
             if consolidated_report:
                 # Log consolidated report to Notion
                 notion_url = self.notion_reporter.log_consolidated_report_to_notion(
                     consolidated_report
                 )
 
-                # Apply technical filter to high-conviction signals before queuing
-                high_conviction_signals = [
-                    a for a in session_analyses if a.get("confidence", 0) >= 8
-                ]
+            # Apply technical filter to high-conviction signals before queuing
+            high_conviction_signals = [
+                a for a in session_analyses if a.get("confidence", 0) >= 8
+            ]
 
-                if high_conviction_signals:
+            if high_conviction_signals:
+                logger.info(
+                    f"📋 Filtering {len(high_conviction_signals)} high-conviction signals for technical criteria..."
+                )
+
+                technically_sound_signals = []
+
+                for analysis in high_conviction_signals:
+                    analysis_etfs = analysis.get(
+                        "high_conviction_etfs", analysis.get("affected_etfs", [])
+                    )
+                    qualified_etfs = []
+
+                    for etf in analysis_etfs:
+                        is_acceptable, support_gap = check_technical_support(
+                            etf, market_snapshot
+                        )
+                        if is_acceptable:
+                            qualified_etfs.append(etf)
+                            logger.info(
+                                f"✅ {etf}: Passes technical filter (support gap: {support_gap:.1%})"
+                            )
+                        else:
+                            logger.info(
+                                f"❌ {etf}: Rejected - overextended (support gap: {support_gap:.1%})"
+                            )
+
+                    if qualified_etfs:
+                        # Update analysis with only technically sound ETFs
+                        analysis["filtered_etfs"] = qualified_etfs
+                        technically_sound_signals.append(analysis)
+
+                if technically_sound_signals:
                     logger.info(
-                        f"📋 Filtering {len(high_conviction_signals)} high-conviction signals for technical criteria..."
+                        f"🎯 Queueing {len(technically_sound_signals)} technically sound signals..."
                     )
 
-                    technically_sound_signals = []
-
-                    for analysis in high_conviction_signals:
-                        analysis_etfs = analysis.get(
-                            "high_conviction_etfs", analysis.get("affected_etfs", [])
+                    for analysis in technically_sound_signals:
+                        alert_id = queue_alert(
+                            signal=analysis.get("signal", "Neutral"),
+                            confidence=analysis.get("confidence", 0),
+                            title=f"High Conviction: {analysis.get('primary_sector', 'Mixed')} Signal",
+                            reasoning=analysis.get("reasoning", ""),
+                            etfs=analysis.get("filtered_etfs", []),
+                            sector=analysis.get("primary_sector", "Mixed"),
+                            article_url=notion_url,
+                            search_term="filtered_high_conviction",
+                            strategy=CURRENT_BATCH_STRATEGY,
                         )
-                        qualified_etfs = []
-
-                        for etf in analysis_etfs:
-                            is_acceptable, support_gap = check_technical_support(
-                                etf, market_snapshot
-                            )
-                            if is_acceptable:
-                                qualified_etfs.append(etf)
-                                logger.info(
-                                    f"✅ {etf}: Passes technical filter (support gap: {support_gap:.1%})"
-                                )
-                            else:
-                                logger.info(
-                                    f"❌ {etf}: Rejected - overextended (support gap: {support_gap:.1%})"
-                                )
-
-                        if qualified_etfs:
-                            # Update analysis with only technically sound ETFs
-                            analysis["filtered_etfs"] = qualified_etfs
-                            technically_sound_signals.append(analysis)
-
-                    if technically_sound_signals:
-                        logger.info(
-                            f"🎯 Queueing {len(technically_sound_signals)} technically sound signals..."
-                        )
-
-                        for analysis in technically_sound_signals:
-                            alert_id = queue_alert(
-                                signal=analysis.get("signal", "Neutral"),
-                                confidence=analysis.get("confidence", 0),
-                                title=f"High Conviction: {analysis.get('primary_sector', 'Mixed')} Signal",
-                                reasoning=analysis.get("reasoning", ""),
-                                etfs=analysis.get("filtered_etfs", []),
-                                sector=analysis.get("primary_sector", "Mixed"),
-                                article_url=notion_url,
-                                search_term="filtered_high_conviction",
-                                strategy=CURRENT_BATCH_STRATEGY,
-                            )
-                            logger.info(f"✅ Alert queued: {alert_id[:8]}")
-                    else:
-                        logger.info("📉 No signals pass technical filtering criteria")
+                        logger.info(f"✅ Alert queued: {alert_id[:8]}")
                 else:
-                    logger.info("⏭️ No high-conviction signals to queue")
+                    logger.info("📉 No signals pass technical filtering criteria")
+            else:
+                logger.info("⏭️ No high-conviction signals to queue")
 
         # After processing all alerts, check for significant new patterns
         if all_mentioned_etfs:
@@ -331,9 +334,10 @@ class NewsAnalyzer:
             # TODO: Log significant patterns to Notion (requires separate patterns database)
 
     def _process_alert_batches(self):
-        """Process any pending alert batches"""
+        """Process any pending alert batches, passing fallback warning if present"""
         logger.info("📱 Processing alert queue...")
-        batch_results = process_alert_queue()
+        fallback_warning = self.market_data_fallback_reason if getattr(self, 'market_data_fallback', False) else None
+        batch_results = process_alert_queue(fallback_warning=fallback_warning)
 
         if batch_results:
             for strategy, success in batch_results.items():
