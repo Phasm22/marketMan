@@ -203,7 +203,8 @@ class NewsFilter:
         stats = {
             "total_received": len(raw_news_items),
             "filtered_out": 0,
-            "reasons": {}
+            "reasons": {},
+            "sample_rejected_items": []  # NEW: Track sample rejected items for debugging
         }
         
         for raw_item in raw_news_items:
@@ -219,11 +220,24 @@ class NewsFilter:
                     self.processed_hashes.add(news_item.hash_id)
                     self.daily_headline_count += 1
                     
-                    logger.debug(f"✅ Accepted: {news_item.title[:60]}... (Tickers: {news_item.tickers})")
+                    logger.debug(f"✅ Accepted: {news_item.title[:60]}... (Tickers: {news_item.tickers}, Score: {news_item.relevance_score:.2f})")
                 else:
                     stats["filtered_out"] += 1
                     stats["reasons"][reason] = stats["reasons"].get(reason, 0) + 1
-                    logger.debug(f"❌ Filtered: {news_item.title[:60]}... (Reason: {reason})")
+                    
+                    # NEW: Track sample rejected items for debugging
+                    if len(stats["sample_rejected_items"]) < 5:
+                        stats["sample_rejected_items"].append({
+                            "title": news_item.title[:80],
+                            "source": news_item.source,
+                            "tickers": news_item.tickers,
+                            "keywords": news_item.keywords,
+                            "relevance_score": news_item.relevance_score,
+                            "sentiment_score": news_item.sentiment_score,
+                            "reason": reason
+                        })
+                    
+                    logger.debug(f"❌ Filtered: {news_item.title[:60]}... (Reason: {reason}, Score: {news_item.relevance_score:.2f}, Tickers: {news_item.tickers})")
                 
                 # Check daily limit
                 if self.daily_headline_count >= self.max_daily_headlines:
@@ -238,7 +252,20 @@ class NewsFilter:
         stats["processed"] = len(filtered_items)
         stats["remaining_daily_budget"] = self.max_daily_headlines - self.daily_headline_count
         
+        # NEW: Log detailed filtering statistics
         logger.info(f"📊 News filtering complete: {stats['processed']}/{stats['total_received']} items accepted")
+        if stats["reasons"]:
+            logger.info(f"🚫 Filter reasons:")
+            for reason, count in stats["reasons"].items():
+                percentage = (count / stats["total_received"]) * 100
+                logger.info(f"  • {reason}: {count} items ({percentage:.1f}%)")
+        
+        # NEW: Log sample rejected items for debugging
+        if stats["sample_rejected_items"]:
+            logger.info(f"🔍 Sample rejected items:")
+            for i, item in enumerate(stats["sample_rejected_items"], 1):
+                logger.info(f"  {i}. '{item['title']}' (Source: {item['source']}, Score: {item['relevance_score']:.2f}, Reason: {item['reason']})")
+        
         return filtered_items, stats
     
     def _create_news_item(self, raw_item: Dict) -> NewsItem:
