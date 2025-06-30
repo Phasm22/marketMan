@@ -1,12 +1,12 @@
 # API Reference
 
-Technical reference for MarketMan's core APIs and interfaces.
+Technical reference for MarketMan's core modules and CLI interface.
 
 ## 📋 Table of Contents
 
 - [Core Modules](#core-modules)
-- [Integrations](#integrations)
 - [CLI Interface](#cli-interface)
+- [Integrations](#integrations)
 - [Data Models](#data-models)
 - [Configuration](#configuration)
 - [Database](#database)
@@ -202,96 +202,15 @@ class PositionSizer:
         
         Args:
             percentage: Percentage of account to risk
-            price: Price per unit
-            confidence: Confidence factor
+            price: Current price of asset
+            confidence: Confidence factor (0.0-1.0)
             
         Returns:
             PositionSizeResult with calculated size
         """
 ```
 
-#### PositionSizeResult
-
-```python
-@dataclass
-class PositionSizeResult:
-    """Result of position sizing calculation."""
-    
-    quantity: int                 # Number of units
-    dollar_amount: float          # Total dollar amount
-    risk_amount: float            # Amount at risk
-    method: str                   # Method used
-    confidence: float             # Confidence level
-```
-
 ### Journal Module
-
-#### TradeJournal
-
-Manages trade recording and performance tracking.
-
-```python
-class TradeJournal:
-    """Trade journal and performance tracker."""
-    
-    def __init__(self, db_path: Optional[str] = None):
-        """Initialize the trade journal.
-        
-        Args:
-            db_path: Database path
-        """
-    
-    def add_trade(
-        self, 
-        signal_id: str, 
-        symbol: str, 
-        entry_price: float, 
-        quantity: int, 
-        timestamp: datetime
-    ) -> str:
-        """Add a new trade entry.
-        
-        Args:
-            signal_id: Associated signal ID
-            symbol: Trading symbol
-            entry_price: Entry price
-            quantity: Number of shares
-            timestamp: Trade timestamp
-            
-        Returns:
-            Trade ID
-        """
-    
-    def close_trade(
-        self, 
-        trade_id: str, 
-        exit_price: float, 
-        timestamp: datetime
-    ) -> float:
-        """Close a trade and calculate P&L.
-        
-        Args:
-            trade_id: Trade ID to close
-            exit_price: Exit price
-            timestamp: Exit timestamp
-            
-        Returns:
-            Realized P&L
-        """
-    
-    def calculate_performance_summary(
-        self, 
-        days: int = 30
-    ) -> Dict[str, Any]:
-        """Calculate performance summary.
-        
-        Args:
-            days: Number of days to analyze
-            
-        Returns:
-            Performance metrics dictionary
-        """
-```
 
 #### AlertBatcher
 
@@ -299,621 +218,885 @@ Manages alert batching and delivery.
 
 ```python
 class AlertBatcher:
-    """Manages alert batching and delivery strategies."""
+    """Alert batching and delivery system."""
     
-    def __init__(self, db_path: Optional[str] = None):
-        """Initialize the alert batcher."""
+    def __init__(self, config: Dict[str, Any]):
+        """Initialize the alert batcher.
+        
+        Args:
+            config: Alert configuration
+        """
     
     def add_alert(
         self, 
-        alert: PendingAlert, 
-        strategy: BatchStrategy = BatchStrategy.SMART_BATCH
+        signal: Signal, 
+        priority: int = 0
     ) -> None:
-        """Add an alert to the batching queue.
+        """Add signal to alert queue.
         
         Args:
-            alert: Alert to add
-            strategy: Batching strategy
+            signal: Trading signal
+            priority: Alert priority (0-10)
         """
     
-    def process_pending(
-        self, 
-        fallback_warning: Optional[str] = None
-    ) -> Dict[str, bool]:
-        """Process pending alert batches.
-        
-        Args:
-            fallback_warning: Warning message for fallback
-            
-        Returns:
-            Dictionary of strategy results
-        """
-    
-    def get_pending_alerts(
-        self, 
-        strategy: Optional[BatchStrategy] = None
-    ) -> List[PendingAlert]:
+    def get_pending_alerts(self) -> List[Alert]:
         """Get pending alerts.
         
-        Args:
-            strategy: Filter by strategy
-            
         Returns:
             List of pending alerts
         """
+    
+    def send_batch(self) -> Dict[str, Any]:
+        """Send batched alerts.
+        
+        Returns:
+            Delivery results
+        """
+```
+
+#### PerformanceTracker
+
+Tracks trading performance and analytics.
+
+```python
+class PerformanceTracker:
+    """Performance tracking and analytics."""
+    
+    def __init__(self, config: Dict[str, Any]):
+        """Initialize the performance tracker.
+        
+        Args:
+            config: Performance configuration
+        """
+    
+    def add_trade(
+        self, 
+        trade: Trade
+    ) -> None:
+        """Add trade to performance tracking.
+        
+        Args:
+            trade: Trade data
+        """
+    
+    def get_performance_summary(
+        self, 
+        days: int = 30
+    ) -> Dict[str, Any]:
+        """Get performance summary.
+        
+        Args:
+            days: Number of days to analyze
+            
+        Returns:
+            Performance summary
+        """
+    
+    def calculate_metrics(self) -> Dict[str, float]:
+        """Calculate performance metrics.
+        
+        Returns:
+            Dictionary of performance metrics
+        """
+```
+
+### Options Module
+
+#### OptionsScalpingStrategy
+
+Options scalping strategy implementation.
+
+```python
+class OptionsScalpingStrategy:
+    """Options scalping strategy."""
+    
+    def __init__(self, config: Dict[str, Any]):
+        """Initialize the strategy.
+        
+        Args:
+            config: Strategy configuration
+        """
+    
+    def scan_for_opportunities(
+        self, 
+        symbols: List[str]
+    ) -> List[Dict[str, Any]]:
+        """Scan for scalping opportunities.
+        
+        Args:
+            symbols: List of symbols to scan
+            
+        Returns:
+            List of opportunities
+        """
+    
+    def calculate_greeks(
+        self, 
+        option_data: Dict[str, Any]
+    ) -> Dict[str, float]:
+        """Calculate option Greeks.
+        
+        Args:
+            option_data: Option contract data
+            
+        Returns:
+            Dictionary of Greeks
+        """
+```
+
+## 🖥️ CLI Interface
+
+### Main Commands
+
+#### Signals Commands
+
+```bash
+# Run signal processing
+marketman signals run
+
+# Check signal status
+marketman signals status
+
+# Run signal backtest (not implemented)
+marketman signals backtest
+```
+
+#### Alerts Commands
+
+```bash
+# Check for new alerts
+marketman alerts check
+
+# Send pending alerts
+marketman alerts send
+
+# Check alert status
+marketman alerts status
+```
+
+#### Performance Commands
+
+```bash
+# Show performance dashboard
+marketman performance show
+
+# Update performance data
+marketman performance update
+
+# Export performance data
+marketman performance export
+```
+
+#### Options Commands
+
+```bash
+# Run options scalping
+marketman options scalp
+
+# Analyze options
+marketman options analyze
+
+# Run options backtest (not implemented)
+marketman options backtest
+```
+
+#### Risk Commands
+
+```bash
+# Analyze portfolio risk
+marketman risk analyze
+
+# Check risk limits
+marketman risk limits
+
+# Calculate position size
+marketman risk position-size
+```
+
+#### News Commands
+
+```bash
+# Check news status
+marketman news status
+
+# Run news processing cycle
+marketman news cycle
+
+# Test news sources
+marketman news test
+
+# Generate signals from news
+marketman news signals
+```
+
+#### Journal Commands
+
+```bash
+# List trades
+marketman journal list-trades
+
+# Show performance
+marketman journal performance
+
+# Show signal analysis
+marketman journal signals
+
+# Setup Fidelity integration
+marketman journal setup-fidelity
+
+# Import Fidelity trades
+marketman journal import-fidelity
+
+# Add manual trade
+marketman journal add-trade
+
+# Add manual signal
+marketman journal add-signal
+
+# Sync with Notion
+marketman journal sync-notion
+
+# Analyze performance
+marketman journal analyze
+```
+
+#### Configuration Commands
+
+```bash
+# Validate configuration
+marketman config validate
+
+# Show configuration
+marketman config show
+
+# Reload configuration
+marketman config reload
+```
+
+### Command Options
+
+#### Global Options
+
+```bash
+-v, --verbose          # Enable verbose logging
+--config PATH          # Path to configuration file
+```
+
+#### Journal-Specific Options
+
+```bash
+--symbol, -s SYMBOL    # Symbol filter
+--days, -d DAYS        # Number of days (default: 30)
+--output, -o FILE      # Output file
+--action, -a ACTION    # Trade action (Buy/Sell)
+--quantity, -q QTY     # Trade quantity
+--price, -p PRICE      # Trade price
+--date DATE            # Trade date
+--confidence, -c CONF  # Signal confidence
+--notes, -n NOTES      # Trade notes
+--type, -t TYPE        # Signal type
+--direction DIR        # Signal direction
+--reasoning, -r REASON # Signal reasoning
+--source SOURCE        # Signal source
+--email, -e EMAIL      # Email for Fidelity setup
+--password PASSWORD    # Password for Fidelity setup
 ```
 
 ## 🔌 Integrations
 
 ### Pushover Integration
 
-#### PushoverNotifier
-
 ```python
-class PushoverNotifier:
+class PushoverClient:
     """Pushover notification client."""
     
-    def __init__(self):
-        """Initialize the notifier."""
+    def __init__(self, config: Dict[str, Any]):
+        """Initialize the client.
+        
+        Args:
+            config: Pushover configuration
+        """
     
-    def send_signal_alert(
+    def send_notification(
         self, 
-        signal: Signal, 
+        message: str, 
+        title: str = None, 
         priority: int = 0
     ) -> bool:
-        """Send signal alert notification.
+        """Send notification.
         
         Args:
-            signal: Signal to send
-            priority: Notification priority
+            message: Notification message
+            title: Notification title
+            priority: Priority level (0-10)
             
         Returns:
-            True if sent successfully
-        """
-    
-    def send_risk_warning(
-        self, 
-        warning_type: str, 
-        message: str, 
-        affected_symbols: Optional[List[str]] = None,
-        severity: str = "medium"
-    ) -> bool:
-        """Send risk warning notification.
-        
-        Args:
-            warning_type: Type of warning
-            message: Warning message
-            affected_symbols: Affected symbols
-            severity: Warning severity
-            
-        Returns:
-            True if sent successfully
-        """
-    
-    def get_rate_limit_status(self) -> Dict[str, Any]:
-        """Get rate limit status.
-        
-        Returns:
-            Rate limit information
+            Success status
         """
 ```
 
 ### Notion Integration
 
-#### NotionReporter
-
 ```python
 class NotionReporter:
-    """Notion database integration."""
+    """Notion reporting integration."""
     
-    def __init__(self, token: str, database_id: str):
+    def __init__(self, config: Dict[str, Any]):
         """Initialize the reporter.
         
         Args:
-            token: Notion API token
-            database_id: Database ID
+            config: Notion configuration
         """
     
     def add_signal(
         self, 
         signal: Signal
-    ) -> str:
+    ) -> bool:
         """Add signal to Notion database.
         
         Args:
-            signal: Signal to add
+            signal: Trading signal
             
         Returns:
-            Notion page ID
+            Success status
         """
     
     def add_trade(
         self, 
-        trade: TradeEntry
-    ) -> str:
+        trade: Trade
+    ) -> bool:
         """Add trade to Notion database.
         
         Args:
-            trade: Trade to add
+            trade: Trade data
             
         Returns:
-            Notion page ID
+            Success status
         """
+```
+
+### Fidelity Integration
+
+```python
+class FidelityIntegration:
+    """Fidelity trade import integration."""
     
-    def update_performance(
-        self, 
-        metrics: Dict[str, Any]
-    ) -> str:
-        """Update performance metrics.
+    def __init__(self, config: Dict[str, Any]):
+        """Initialize the integration.
         
         Args:
-            metrics: Performance metrics
+            config: Fidelity configuration
+        """
+    
+    def import_trades(
+        self, 
+        days_back: int = 30
+    ) -> List[Trade]:
+        """Import trades from Fidelity.
+        
+        Args:
+            days_back: Number of days to import
             
         Returns:
-            Notion page ID
+            List of imported trades
         """
 ```
 
 ### Gmail Integration
 
-#### GmailPoller
-
 ```python
-class GmailPoller:
-    """Gmail polling for Google Alerts."""
+class GmailOrganizer:
+    """Gmail organization integration."""
     
-    def __init__(self, credentials_path: str, token_path: str):
-        """Initialize the poller.
+    def __init__(self, config: Dict[str, Any]):
+        """Initialize the organizer.
         
         Args:
-            credentials_path: Path to credentials file
-            token_path: Path to token file
+            config: Gmail configuration
         """
     
-    def get_google_alerts(self) -> List[Dict[str, Any]]:
-        """Get Google Alerts from Gmail.
-        
-        Returns:
-            List of alert data
-        """
-    
-    def mark_as_read(self, message_id: str) -> bool:
-        """Mark message as read.
+    def organize_marketman_emails(
+        self, 
+        days_back: int = 3, 
+        dry_run: bool = False
+    ) -> Dict[str, Any]:
+        """Organize MarketMan emails.
         
         Args:
-            message_id: Gmail message ID
+            days_back: Number of days to process
+            dry_run: Run without making changes
             
         Returns:
-            True if successful
+            Organization results
         """
-```
-
-## 🖥️ CLI Interface
-
-### Main CLI
-
-```python
-def main() -> int:
-    """Main CLI entry point.
-    
-    Returns:
-        Exit code
-    """
-```
-
-### Available Commands
-
-#### News Commands
-```bash
-python marketman news cycle          # Process news cycle
-python marketman news status          # Show news system status
-python marketman news filter          # Test news filtering
-```
-
-#### Signal Commands
-```bash
-python marketman signals run          # Generate signals
-python marketman signals status        # Show signal status
-python marketman signals backtest      # Run signal backtest
-```
-
-#### Alert Commands
-```bash
-python marketman alerts check          # Check for alerts
-python marketman alerts send           # Send pending alerts
-python marketman alerts status         # Show alert status
-```
-
-#### Performance Commands
-```bash
-python marketman performance show      # Show performance dashboard
-python marketman performance export    # Export performance data
-```
-
-#### Configuration Commands
-```bash
-python marketman config validate       # Validate configuration
-python marketman config show           # Show current config
-python marketman config reload         # Reload configuration
-```
-
-#### System Commands
-```bash
-python marketman status                # System status
-python marketman test                  # Run tests
-python marketman lint                  # Code quality checks
 ```
 
 ## 📊 Data Models
 
-### Core Data Structures
+### Core Data Models
 
-#### NewsItem
 ```python
 @dataclass
 class NewsItem:
     """News item data structure."""
-    
-    title: str                       # News title
-    content: str                     # News content
-    source: str                      # News source
-    url: Optional[str]               # Article URL
-    timestamp: datetime              # Publication timestamp
-    tickers: List[str]               # Mentioned tickers
-    relevance_score: float           # Relevance score (0.0-1.0)
-    sentiment_score: float           # Sentiment score (-1.0 to 1.0)
-    news_id: Optional[str] = None
-```
+    id: Optional[int]
+    title: str
+    content: str
+    source: str
+    url: Optional[str]
+    timestamp: datetime
+    tickers: List[str]
+    relevance_score: float
+    sentiment_score: float
+    created_at: datetime
 
-#### TradeEntry
-```python
 @dataclass
-class TradeEntry:
-    """Trade entry data structure."""
-    
-    signal_id: str                   # Associated signal ID
-    symbol: str                      # Trading symbol
-    entry_price: float               # Entry price
-    exit_price: Optional[float]      # Exit price
-    quantity: int                    # Number of shares
-    entry_timestamp: datetime        # Entry timestamp
-    exit_timestamp: Optional[datetime] = None
+class Signal:
+    """Trading signal data structure."""
+    id: Optional[int]
+    signal_type: str
+    confidence: int
+    title: str
+    reasoning: str
+    etfs: List[str]
+    sector: str
+    article_url: Optional[str]
+    search_term: str
+    timestamp: datetime
+    created_at: datetime
+    signal_id: Optional[str] = None
+
+@dataclass
+class Trade:
+    """Trade data structure."""
+    id: Optional[int]
+    signal_id: Optional[str]
+    symbol: str
+    action: str  # "Buy" or "Sell"
+    quantity: float
+    price: float
+    timestamp: datetime
+    notes: Optional[str]
+    created_at: datetime
     realized_pnl: Optional[float] = None
-    trade_id: Optional[str] = None
+    exit_price: Optional[float] = None
+    exit_timestamp: Optional[datetime] = None
+
+@dataclass
+class Alert:
+    """Alert data structure."""
+    id: Optional[int]
+    signal: Signal
+    priority: int
+    status: str  # "pending", "sent", "failed"
+    created_at: datetime
+    sent_at: Optional[datetime] = None
 ```
 
-#### PerformanceMetrics
+### Configuration Models
+
 ```python
 @dataclass
-class PerformanceMetrics:
-    """Performance metrics data structure."""
-    
-    total_trades: int                # Total number of trades
-    winning_trades: int              # Number of winning trades
-    losing_trades: int               # Number of losing trades
-    total_pnl: float                 # Total P&L
-    win_rate: float                  # Win rate percentage
-    avg_win: float                   # Average winning trade
-    avg_loss: float                  # Average losing trade
-    profit_factor: float             # Profit factor
-    max_drawdown: float              # Maximum drawdown
-    sharpe_ratio: float              # Sharpe ratio
-    sortino_ratio: float             # Sortino ratio
-    max_consecutive_losses: int      # Max consecutive losses
-    max_consecutive_wins: int        # Max consecutive wins
-    avg_holding_period: float        # Average holding period
-    signal_accuracy: float           # Signal accuracy percentage
-    avg_signal_confidence: float     # Average signal confidence
-    sector_performance: Dict[str, float]  # Performance by sector
-    daily_pnl: Dict[str, float]      # Daily P&L
-    weekly_pnl: Dict[str, float]     # Weekly P&L
-    monthly_pnl: Dict[str, float]    # Monthly P&L
+class NewsConfig:
+    """News processing configuration."""
+    max_daily_headlines: int = 50
+    max_daily_ai_calls: int = 75
+    min_relevance_score: float = 0.15
+    batch_size: int = 10
+    sources: List[str] = field(default_factory=list)
+
+@dataclass
+class RiskConfig:
+    """Risk management configuration."""
+    max_daily_loss: float = 0.05
+    max_position_size: float = 0.02
+    stop_loss_percent: float = 2.0
+    max_kelly_fraction: float = 0.25
+    max_sector_exposure: float = 0.3
+
+@dataclass
+class AlertConfig:
+    """Alert configuration."""
+    batch_strategy: str = "smart_batch"
+    max_daily_alerts: int = 10
+    confidence_threshold: int = 7
+    pushover_enabled: bool = True
+    notion_enabled: bool = False
 ```
 
 ## ⚙️ Configuration
 
-### Configuration Loader
+### Configuration Files
 
-```python
-class ConfigLoader:
-    """Centralized configuration loader."""
-    
-    def __init__(self, config_dir: str = "config"):
-        """Initialize the loader.
-        
-        Args:
-            config_dir: Configuration directory
-        """
-    
-    def load_settings(self) -> Dict[str, Any]:
-        """Load main settings configuration.
-        
-        Returns:
-            Settings dictionary
-        """
-    
-    def load_strategies(self) -> Dict[str, Any]:
-        """Load strategy configuration.
-        
-        Returns:
-            Strategies dictionary
-        """
-    
-    def load_brokers(self) -> Dict[str, Any]:
-        """Load broker configuration.
-        
-        Returns:
-            Brokers dictionary
-        """
-    
-    def get_setting(
-        self, 
-        key_path: str, 
-        default: Any = None
-    ) -> Any:
-        """Get a specific setting value.
-        
-        Args:
-            key_path: Dot-separated path to setting
-            default: Default value if not found
-            
-        Returns:
-            Setting value
-        """
-    
-    def is_feature_enabled(self, feature_path: str) -> bool:
-        """Check if a feature is enabled.
-        
-        Args:
-            feature_path: Feature path
-            
-        Returns:
-            True if enabled
-        """
+#### settings.yaml (Main Configuration)
+
+```yaml
+# News Processing
+news_ingestion:
+  max_daily_headlines: 50
+  max_daily_ai_calls: 75
+  min_relevance_score: 0.15
+  batch_size: 10
+  sources:
+    - finnhub
+    - newsapi
+    - newdata
+
+# Risk Management
+risk:
+  max_daily_loss: 0.05
+  max_position_size: 0.02
+  stop_loss_percent: 2.0
+  max_kelly_fraction: 0.25
+  max_sector_exposure: 0.3
+
+# Alerts
+alerts:
+  batch_strategy: smart_batch
+  max_daily_alerts: 10
+  confidence_threshold: 7
+  pushover_enabled: true
+  notion_enabled: false
+
+# Database
+database:
+  type: sqlite
+  path: data/marketman.db
+  backup_enabled: true
+  backup_interval_hours: 24
+
+# Logging
+logging:
+  level: INFO
+  file: logs/marketman.log
+  max_size_mb: 100
+  backup_count: 5
 ```
 
-### Configuration Functions
+#### strategies.yaml (Strategy Configuration)
 
-```python
-def get_config() -> ConfigLoader:
-    """Get global configuration loader.
-    
-    Returns:
-        Global ConfigLoader instance
-    """
+```yaml
+# ETF Signal Strategy
+etf_signals:
+  name: "ETF Momentum Strategy"
+  enabled: true
+  symbols:
+    - "QQQ"
+    - "SPY"
+    - "IWM"
+    - "XLF"
+    - "XLE"
+  
+  technical_indicators:
+    rsi_period: 14
+    rsi_oversold: 30
+    rsi_overbought: 70
+    macd_fast: 12
+    macd_slow: 26
+    macd_signal: 9
+    sma_short: 20
+    sma_long: 50
 
-def get_setting(key_path: str, default: Any = None) -> Any:
-    """Get setting value.
-    
-    Args:
-        key_path: Setting path
-        default: Default value
-        
-    Returns:
-        Setting value
-    """
+# Options Scalping Strategy
+options_scalping:
+  name: "QQQ/SPY Options Scalping"
+  enabled: false
+  symbols:
+    - "QQQ"
+    - "SPY"
+  
+  entry_conditions:
+    min_iv_percentile: 30
+    max_iv_percentile: 80
+    min_dte: 1
+    max_dte: 7
+    min_bid_ask_spread: 0.05
+```
 
-def is_feature_enabled(feature_path: str) -> bool:
-    """Check if feature is enabled.
-    
-    Args:
-        feature_path: Feature path
-        
-    Returns:
-        True if enabled
-    """
+#### brokers.yaml (Broker Configuration)
+
+```yaml
+# Paper Trading (Default)
+paper_trading:
+  enabled: true
+  name: "Paper Trading"
+  account_type: "paper"
+  initial_balance: 25000
+  commission_per_trade: 0.0
+  margin_enabled: false
+
+# Global Settings
+global_settings:
+  max_position_size: 2500
+  max_daily_trades: 20
+  max_daily_loss: 500
+  default_quantity: 100
+  min_order_size: 1
+  max_order_size: 2500
+```
+
+### Environment Variables
+
+```bash
+# OpenAI
+OPENAI_API_KEY=your_openai_key
+
+# News APIs
+FINNHUB_KEY=your_finnhub_key
+NEWS_API=your_newsapi_key
+NEWS_DATA_KEY=your_newdata_key
+
+# Notifications
+PUSHOVER_TOKEN=your_pushover_token
+PUSHOVER_USER=your_pushover_user
+
+# Notion (optional)
+NOTION_TOKEN=your_notion_token
+NOTION_DATABASE_ID=your_database_id
+
+# Fidelity (optional)
+FIDELITY_EMAIL=your_fidelity_email
+FIDELITY_PASSWORD=your_fidelity_password
+
+# Gmail (optional)
+GMAIL_CLIENT_ID=your_gmail_client_id
+GMAIL_CLIENT_SECRET=your_gmail_client_secret
+GMAIL_REFRESH_TOKEN=your_gmail_refresh_token
 ```
 
 ## 🗄️ Database
 
-### Database Manager
-
-```python
-class DatabaseManager:
-    """Database abstraction layer."""
-    
-    def __init__(self, db_path: str):
-        """Initialize the manager.
-        
-        Args:
-            db_path: Database file path
-        """
-    
-    def init_database(self) -> None:
-        """Initialize database tables."""
-    
-    def execute_query(
-        self, 
-        query: str, 
-        params: Optional[Tuple] = None
-    ) -> List[Dict[str, Any]]:
-        """Execute a database query.
-        
-        Args:
-            query: SQL query
-            params: Query parameters
-            
-        Returns:
-            Query results
-        """
-    
-    def execute_transaction(
-        self, 
-        queries: List[Tuple[str, Optional[Tuple]]]
-    ) -> bool:
-        """Execute multiple queries in a transaction.
-        
-        Args:
-            queries: List of (query, params) tuples
-            
-        Returns:
-            True if successful
-        """
-```
-
-### Database Instances
-
-```python
-# Global database instances
-market_memory_db = DatabaseManager("data/marketman_memory.db")
-alert_batch_db = DatabaseManager("data/alert_batch.db")
-trade_journal_db = DatabaseManager("data/trade_journal.db")
-```
-
 ### Database Schema
 
 #### News Items Table
+
 ```sql
 CREATE TABLE news_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
-    content TEXT,
-    source TEXT,
+    content TEXT NOT NULL,
+    source TEXT NOT NULL,
     url TEXT,
     timestamp DATETIME NOT NULL,
     tickers TEXT,  -- JSON array
-    relevance_score REAL,
+    relevance_score REAL NOT NULL,
     sentiment_score REAL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_news_timestamp ON news_items(timestamp);
+CREATE INDEX idx_news_source ON news_items(source);
+CREATE INDEX idx_news_tickers ON news_items(tickers);
 ```
 
 #### Signals Table
+
 ```sql
 CREATE TABLE signals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     signal_type TEXT NOT NULL,
     confidence INTEGER NOT NULL,
     title TEXT NOT NULL,
-    reasoning TEXT,
-    etfs TEXT,  -- JSON array
-    sector TEXT,
+    reasoning TEXT NOT NULL,
+    etfs TEXT NOT NULL,  -- JSON array
+    sector TEXT NOT NULL,
     article_url TEXT,
-    search_term TEXT,
+    search_term TEXT NOT NULL,
     timestamp DATETIME NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_signals_confidence ON signals(confidence);
+CREATE INDEX idx_signals_timestamp ON signals(timestamp);
+CREATE INDEX idx_signals_type ON signals(signal_type);
 ```
 
 #### Trades Table
+
 ```sql
 CREATE TABLE trades (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     signal_id TEXT,
     symbol TEXT NOT NULL,
-    entry_price REAL NOT NULL,
-    exit_price REAL,
-    quantity INTEGER NOT NULL,
-    entry_timestamp DATETIME NOT NULL,
-    exit_timestamp DATETIME,
+    action TEXT NOT NULL,  -- "Buy" or "Sell"
+    quantity REAL NOT NULL,
+    price REAL NOT NULL,
+    timestamp DATETIME NOT NULL,
+    notes TEXT,
     realized_pnl REAL,
+    exit_price REAL,
+    exit_timestamp DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_trades_symbol ON trades(symbol);
+CREATE INDEX idx_trades_timestamp ON trades(timestamp);
+CREATE INDEX idx_trades_signal_id ON trades(signal_id);
 ```
 
-#### Alert Batches Table
+#### Alerts Table
+
 ```sql
-CREATE TABLE alert_batches (
+CREATE TABLE alerts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    strategy TEXT NOT NULL,
-    alerts TEXT,  -- JSON array
-    status TEXT DEFAULT 'pending',
+    signal_id INTEGER NOT NULL,
+    priority INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'pending',  -- "pending", "sent", "failed"
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    processed_at DATETIME
+    sent_at DATETIME,
+    FOREIGN KEY (signal_id) REFERENCES signals(id)
 );
+
+CREATE INDEX idx_alerts_status ON alerts(status);
+CREATE INDEX idx_alerts_priority ON alerts(priority);
+CREATE INDEX idx_alerts_created_at ON alerts(created_at);
 ```
 
-## 🔧 Utility Functions
+### Database Operations
 
-### Formatting Utilities
+#### Connection Management
 
 ```python
-def format_price_context(price: float, change: float) -> str:
-    """Format price with context.
+class DatabaseManager:
+    """Database connection and operation manager."""
     
-    Args:
-        price: Current price
-        change: Price change
+    def __init__(self, db_path: str):
+        """Initialize database manager.
         
-    Returns:
-        Formatted price string
-    """
-
-def format_volume_with_liquidity(volume: int) -> str:
-    """Format volume with liquidity context.
+        Args:
+            db_path: Path to SQLite database
+        """
+        self.db_path = db_path
+        self.connection = None
     
-    Args:
-        volume: Trading volume
-        
-    Returns:
-        Formatted volume string
-    """
-
-def format_conviction_tier(confidence: int) -> str:
-    """Format confidence as conviction tier.
+    def connect(self) -> None:
+        """Establish database connection."""
+        self.connection = sqlite3.connect(self.db_path)
+        self.connection.row_factory = sqlite3.Row
     
-    Args:
-        confidence: Confidence score (1-10)
-        
-    Returns:
-        Conviction tier string
-    """
-
-def format_signal_summary(signal: Signal) -> str:
-    """Format signal as summary string.
+    def disconnect(self) -> None:
+        """Close database connection."""
+        if self.connection:
+            self.connection.close()
     
-    Args:
-        signal: Signal to format
+    def execute_query(
+        self, 
+        query: str, 
+        params: tuple = None
+    ) -> List[Dict]:
+        """Execute a query.
         
-    Returns:
-        Formatted summary
-    """
+        Args:
+            query: SQL query string
+            params: Query parameters
+            
+        Returns:
+            List of result dictionaries
+        """
+        cursor = self.connection.cursor()
+        if params:
+            cursor.execute(query, params)
+        else:
+            cursor.execute(query)
+        return [dict(row) for row in cursor.fetchall()]
+    
+    def execute_transaction(
+        self, 
+        queries: List[tuple]
+    ) -> bool:
+        """Execute multiple queries in transaction.
+        
+        Args:
+            queries: List of (query, params) tuples
+            
+        Returns:
+            Success status
+        """
+        try:
+            cursor = self.connection.cursor()
+            for query, params in queries:
+                cursor.execute(query, params)
+            self.connection.commit()
+            return True
+        except Exception as e:
+            self.connection.rollback()
+            raise e
 ```
 
-### Validation Utilities
+#### Data Access Patterns
 
 ```python
-def validate_symbol(symbol: str) -> bool:
-    """Validate trading symbol.
+class NewsRepository:
+    """News data access layer."""
     
-    Args:
-        symbol: Symbol to validate
+    def __init__(self, db_manager: DatabaseManager):
+        """Initialize repository.
         
-    Returns:
-        True if valid
-    """
-
-def validate_percentage(value: float) -> bool:
-    """Validate percentage value.
+        Args:
+            db_manager: Database manager instance
+        """
+        self.db = db_manager
     
-    Args:
-        value: Percentage to validate
+    def add_news_item(self, news_item: NewsItem) -> int:
+        """Add news item to database.
         
-    Returns:
-        True if valid
-    """
-
-def validate_confidence_score(score: int) -> bool:
-    """Validate confidence score.
+        Args:
+            news_item: News item to add
+            
+        Returns:
+            Inserted item ID
+        """
+        query = """
+        INSERT INTO news_items (title, content, source, url, timestamp, 
+                               tickers, relevance_score, sentiment_score)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        params = (
+            news_item.title,
+            news_item.content,
+            news_item.source,
+            news_item.url,
+            news_item.timestamp,
+            json.dumps(news_item.tickers),
+            news_item.relevance_score,
+            news_item.sentiment_score
+        )
+        
+        cursor = self.db.connection.cursor()
+        cursor.execute(query, params)
+        self.db.connection.commit()
+        return cursor.lastrowid
     
-    Args:
-        score: Score to validate
+    def get_news_by_tickers(
+        self, 
+        tickers: List[str], 
+        hours_back: int = 24
+    ) -> List[Dict]:
+        """Get news items by tickers.
         
-    Returns:
-        True if valid
-    """
-
-def validate_signal_data(data: Dict[str, Any]) -> bool:
-    """Validate signal data structure.
-    
-    Args:
-        data: Signal data to validate
+        Args:
+            tickers: List of ticker symbols
+            hours_back: Hours of historical data
+            
+        Returns:
+            List of news items
+        """
+        query = """
+        SELECT * FROM news_items 
+        WHERE timestamp >= datetime('now', '-{} hours')
+        AND tickers LIKE ?
+        ORDER BY timestamp DESC
+        """
         
-    Returns:
-        True if valid
-    """
+        results = []
+        for ticker in tickers:
+            params = (f'%{ticker}%',)
+            items = self.db.execute_query(query.format(hours_back), params)
+            results.extend(items)
+        
+        return results
 ```
 
 ---
 
-**Next**: [Architecture](architecture.md) for system design details 
+**Next**: [User Guide](user-guide.md) for usage instructions 

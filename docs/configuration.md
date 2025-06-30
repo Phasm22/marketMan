@@ -5,7 +5,6 @@ Complete guide to configuring MarketMan for your trading needs.
 ## 📋 Table of Contents
 
 - [Overview](#overview)
-- [Environment Setup](#environment-setup)
 - [Configuration Files](#configuration-files)
 - [Risk Management](#risk-management)
 - [News Processing](#news-processing)
@@ -15,80 +14,55 @@ Complete guide to configuring MarketMan for your trading needs.
 
 ## 🎯 Overview
 
-MarketMan uses a hierarchical configuration system:
-- **Environment variables** (`.env`) - API keys and secrets
-- **YAML files** (`config/`) - System settings and strategies
+MarketMan uses a YAML-based configuration system:
+- **settings.yaml** - Main system configuration and API keys
+- **strategies.yaml** - Trading strategy configurations
+- **brokers.yaml** - Broker and trading settings
 - **Runtime validation** - Ensures settings are valid
-
-## 🔐 Environment Setup
-
-### Required API Keys
-
-Create a `.env` file in the project root:
-
-```bash
-# OpenAI Configuration
-OPENAI_API_KEY=sk-proj-your-openai-key-here
-
-# News APIs
-FINNHUB_KEY=your-finnhub-key
-NEWS_API=your-newsapi-key
-NEWS_DATA_KEY=your-newdata-key
-
-# Gmail (for Google Alerts)
-GMAIL_USER=your-email@gmail.com
-GMAIL_APP_PASSWORD=your-app-password
-
-# Pushover (notifications)
-PUSHOVER_TOKEN=your-pushover-token
-PUSHOVER_USER=your-pushover-user-key
-
-# Notion (optional)
-NOTION_TOKEN=your-notion-token
-NOTION_DATABASE_ID=your-database-id
-TRADES_DATABASE_ID=your-trades-db-id
-SIGNALS_DATABASE_ID=your-signals-db-id
-PERFORMANCE_DATABASE_ID=your-performance-db-id
-
-# Alert Strategy
-ALERT_STRATEGY=smart_batch
-```
-
-### Getting API Keys
-
-#### OpenAI
-1. Go to [OpenAI Platform](https://platform.openai.com/)
-2. Create account and add billing
-3. Generate API key in API Keys section
-
-#### Finnhub
-1. Visit [Finnhub.io](https://finnhub.io/)
-2. Sign up for free account
-3. Get API key from dashboard
-
-#### NewsAPI
-1. Go to [NewsAPI.org](https://newsapi.org/)
-2. Register for free account
-3. Copy API key from account page
-
-#### NewData
-1. Visit [NewData.io](https://newsdata.io/)
-2. Create free account
-3. Get API key from dashboard
-
-#### Pushover
-1. Go to [Pushover.net](https://pushover.net/)
-2. Create account
-3. Get User Key from main page
-4. Create app to get API Token
 
 ## 📁 Configuration Files
 
 ### settings.yaml
 
-Main system configuration file:
+Main system configuration file (create this file in `config/` directory):
 
 ```yaml
+# OpenAI Configuration
+openai:
+  api_key: sk-proj-your-openai-key-here
+
+# News APIs
+finnhub:
+  api_key: your-finnhub-key
+newsapi:
+  api_key: your-newsapi-key
+newdata:
+  api_key: your-newdata-key
+
+# Pushover (notifications)
+pushover:
+  token: your-pushover-token
+  user_key: your-pushover-user-key
+
+# Notion (optional)
+notion:
+  token: your-notion-token
+  database_id: your-database-id
+  trades_database_id: your-trades-db-id
+  signals_database_id: your-signals-db-id
+  performance_database_id: your-performance-db-id
+
+# Gmail (optional)
+gmail:
+  client_id: your-gmail-client-id
+  client_secret: your-gmail-client-secret
+  refresh_token: your-gmail-refresh-token
+
+# Fidelity (optional)
+fidelity:
+  email: your-fidelity-email
+  password: your-fidelity-password
+
 # Application Settings
 app:
   name: MarketMan
@@ -99,61 +73,39 @@ app:
 # Risk Management
 risk:
   max_daily_loss: 0.05          # 5% maximum daily loss
-  max_daily_loss_percent: 3.0   # 3% daily loss limit
   max_position_size: 0.02       # 2% maximum position size
-  max_position_size_percent: 5.0 # 5% position size limit
-  max_kelly_fraction: 0.25      # 25% Kelly criterion limit
   stop_loss_percent: 2.0        # 2% stop loss
+  max_kelly_fraction: 0.25      # 25% Kelly criterion limit
   position_sizing_enabled: true
 
 # News Processing
 news_ingestion:
   max_daily_headlines: 50       # Maximum headlines per day
   max_daily_ai_calls: 75        # Maximum AI API calls
-  max_monthly_ai_budget: 30.0   # Monthly AI budget in USD
-  
-  # Advanced Filtering
-  advanced_filtering:
-    min_relevance_score: 0.15   # Minimum relevance threshold
-    min_sentiment_strength: 0.1 # Minimum sentiment strength
-    min_ticker_count: 1         # Minimum tickers mentioned
-    require_multiple_tickers: false
-    max_title_length: 200
-    min_content_length: 50
-    exclude_clickbait: true
-    require_financial_context: false
-
-  # Market Hours (Mountain Time)
-  market_hours:
-    start: '08:00'
-    end: '18:00'
-    timezone: America/Denver
+  min_relevance_score: 0.15     # Minimum relevance threshold
+  batch_size: 10                # News batching size
 
 # Alerts
 alerts:
   batch_strategy: smart_batch   # immediate, smart_batch, time_window, daily_digest
   max_daily_alerts: 10          # Maximum alerts per day
-  notification_channels:
-    - pushover
-    - notion
+  confidence_threshold: 7       # Minimum confidence for alerts
+  pushover_enabled: true
+  notion_enabled: false
 
-# API Limits
-api_limits:
-  finnhub:
-    calls_per_day: 1000
-    calls_per_minute: 60
-  newdata:
-    calls_per_day: 200
-  newsapi:
-    articles_per_credit: 10
-    calls_per_day: 100
-  openai:
-    max_requests_per_day: 50
-    max_tokens_per_request: 1000
+# Database
+database:
+  type: sqlite
+  path: data/marketman.db
+  backup_enabled: true
+  backup_interval_hours: 24
 
-# Minimum thresholds
-min_confidence_threshold: 7     # Minimum confidence for signals
-min_mentions_for_etf: 2         # Minimum mentions for ETF inclusion
+# Logging
+logging:
+  level: INFO
+  file: logs/marketman.log
+  max_size_mb: 100
+  backup_count: 5
 ```
 
 ### strategies.yaml
@@ -187,6 +139,52 @@ etf_signals:
     min_price: 10.0
     max_volatility: 0.05
 
+# News Analysis Strategy
+news_analysis:
+  name: "News Sentiment Strategy"
+  enabled: true
+  
+  keywords:
+    positive: ["bullish", "rally", "surge", "gain", "positive", "growth"]
+    negative: ["bearish", "decline", "drop", "loss", "negative", "recession"]
+    neutral: ["stable", "steady", "unchanged", "flat"]
+  
+  sentiment_weights:
+    positive: 1.0
+    negative: -1.0
+    neutral: 0.0
+  
+  time_decay:
+    half_life_hours: 24
+    max_age_hours: 168  # 1 week
+
+# Options Scalping Strategy
+options_scalping:
+  name: "QQQ/SPY Options Scalping"
+  enabled: false  # Toggle to activate
+  
+  symbols:
+    - "QQQ"
+    - "SPY"
+  
+  entry_conditions:
+    min_iv_percentile: 30
+    max_iv_percentile: 80
+    min_dte: 1
+    max_dte: 7
+    min_bid_ask_spread: 0.05
+  
+  exit_conditions:
+    profit_target_percent: 1.5
+    stop_loss_percent: 1.0
+    max_hold_time_minutes: 30
+    theta_decay_threshold: 0.1
+  
+  position_sizing:
+    max_capital_per_trade: 1000
+    max_portfolio_risk: 0.02  # 2%
+    max_correlation: 0.7
+
 # Risk Management Strategy
 risk_management:
   name: "Dynamic Risk Management"
@@ -196,7 +194,7 @@ risk_management:
     kelly_criterion_enabled: true
     max_kelly_fraction: 0.25
     min_position_size: 100
-    max_position_size: 2500
+    max_position_size: 2500  # Reduced from 10000 to align with 25k account
   
   stop_loss:
     trailing_stop_enabled: true
@@ -212,7 +210,7 @@ risk_management:
 
 ### brokers.yaml
 
-Broker and trading configuration:
+Broker and trading configurations:
 
 ```yaml
 # Paper Trading (Default)
@@ -223,6 +221,28 @@ paper_trading:
   initial_balance: 25000
   commission_per_trade: 0.0
   margin_enabled: false
+
+# Interactive Brokers (Future)
+interactive_brokers:
+  enabled: false
+  name: "Interactive Brokers"
+  account_type: "live"
+  host: "127.0.0.1"
+  port: 7497
+  client_id: 1
+  paper_trading: false
+  
+  # API Settings
+  api_settings:
+    timeout: 30
+    retry_attempts: 3
+    retry_delay: 1
+  
+  # Order Settings
+  order_settings:
+    default_order_type: "MKT"
+    default_time_in_force: "DAY"
+    max_slippage: 0.01
 
 # Global Broker Settings
 global_settings:
@@ -243,270 +263,278 @@ global_settings:
   after_hours_close: "20:00"
 ```
 
+## 🔐 Getting API Keys
+
+### OpenAI
+1. Go to [OpenAI Platform](https://platform.openai.com/)
+2. Create account and add billing
+3. Generate API key in API Keys section
+
+### Finnhub
+1. Visit [Finnhub.io](https://finnhub.io/)
+2. Sign up for free account
+3. Get API key from dashboard
+
+### NewsAPI
+1. Go to [NewsAPI.org](https://newsapi.org/)
+2. Register for free account
+3. Copy API key from account page
+
+### NewData
+1. Visit [NewData.io](https://newsdata.io/)
+2. Create free account
+3. Get API key from dashboard
+
+### Pushover
+1. Go to [Pushover.net](https://pushover.net/)
+2. Create account
+3. Get User Key from main page
+4. Create app to get API Token
+
+### Notion (Optional)
+1. Go to [Notion Developers](https://developers.notion.com/)
+2. Create integration
+3. Get internal integration token
+4. Share database with integration
+
 ## 🛡️ Risk Management
 
 ### Position Sizing
 
-Configure how much capital to risk per trade:
-
-```yaml
-risk:
-  max_position_size: 0.02       # 2% of account per trade
-  max_kelly_fraction: 0.25      # 25% Kelly criterion limit
-  position_sizing_enabled: true
-```
-
-### Stop Losses
-
-Set automatic stop losses:
-
-```yaml
-risk:
-  stop_loss_percent: 2.0        # 2% stop loss
-  trailing_stop_enabled: true   # Enable trailing stops
-  trailing_stop_percent: 1.0    # 1% trailing stop
-```
-
-### Daily Limits
-
-Prevent excessive losses:
+Configure position sizing parameters:
 
 ```yaml
 risk:
   max_daily_loss: 0.05          # 5% maximum daily loss
-  max_daily_loss_percent: 3.0   # 3% daily loss limit
+  max_position_size: 0.02       # 2% maximum position size
+  stop_loss_percent: 2.0        # 2% stop loss
+  max_kelly_fraction: 0.25      # 25% Kelly criterion limit
+```
+
+### Portfolio Limits
+
+Set portfolio-level risk limits:
+
+```yaml
+risk_management:
+  portfolio_limits:
+    max_sector_exposure: 0.3    # 30% max per sector
+    max_single_position: 0.1    # 10% max per position
+    max_correlation: 0.8        # Max correlation between positions
+    min_diversification: 5      # Minimum number of positions
 ```
 
 ## 📰 News Processing
 
+### Source Configuration
+
+Configure news sources and limits:
+
+```yaml
+news_ingestion:
+  max_daily_headlines: 50       # Maximum headlines per day
+  max_daily_ai_calls: 75        # Maximum AI API calls
+  min_relevance_score: 0.15     # Minimum relevance threshold
+  batch_size: 10                # News batching size
+```
+
 ### Filtering Settings
 
-Control news quality and relevance:
+Advanced news filtering options:
 
 ```yaml
-news_ingestion:
-  advanced_filtering:
-    min_relevance_score: 0.15   # Higher = more selective
-    min_sentiment_strength: 0.1 # Higher = stronger sentiment required
-    exclude_clickbait: true     # Remove clickbait headlines
-    require_financial_context: false # Allow tech news
-```
-
-### Cost Control
-
-Manage API costs:
-
-```yaml
-news_ingestion:
-  max_daily_ai_calls: 75        # Limit AI API calls
-  max_monthly_ai_budget: 30.0   # Monthly budget limit
-```
-
-### Market Hours
-
-Define active trading hours:
-
-```yaml
-news_ingestion:
-  market_hours:
-    start: '08:00'              # Start time
-    end: '18:00'                # End time
-    timezone: America/Denver    # Timezone
+news_analysis:
+  keywords:
+    positive: ["bullish", "rally", "surge", "gain", "positive", "growth"]
+    negative: ["bearish", "decline", "drop", "loss", "negative", "recession"]
+    neutral: ["stable", "steady", "unchanged", "flat"]
+  
+  sentiment_weights:
+    positive: 1.0
+    negative: -1.0
+    neutral: 0.0
 ```
 
 ## 📱 Alerts & Notifications
 
-### Pushover Configuration
+### Alert Configuration
 
-```yaml
-integrations:
-  pushover:
-    enabled: true
-    api_token: your-api-token
-    user_token: your-user-key
-    confidence_threshold: 7     # Minimum confidence for alerts
-    rate_limit_per_hour: 10     # Maximum alerts per hour
-    risk_warnings_enabled: true
-    priority_settings:
-      high_confidence: 0        # Normal priority
-      medium_confidence: 0      # Normal priority
-      low_confidence: -1        # Quiet priority
-      system_alerts: 1          # High priority
-      risk_warnings: 1          # High priority
-```
-
-### Alert Batching
-
-Choose alert strategy:
+Configure alert behavior:
 
 ```yaml
 alerts:
-  batch_strategy: smart_batch   # Options:
-                                # - immediate: Send immediately
-                                # - smart_batch: Intelligent batching
-                                # - time_window: 30-minute windows
-                                # - daily_digest: Daily summary
+  batch_strategy: smart_batch   # Batching strategy
   max_daily_alerts: 10          # Maximum alerts per day
+  confidence_threshold: 7       # Minimum confidence for alerts
+  pushover_enabled: true        # Enable Pushover notifications
+  notion_enabled: false         # Enable Notion integration
 ```
+
+### Batching Strategies
+
+Choose alert batching strategy:
+
+- **immediate** - Send alerts immediately
+- **smart_batch** - Group related alerts
+- **time_window** - Send in time windows
+- **daily_digest** - Daily summary
 
 ## ⚡ Performance Tuning
 
-### API Rate Limits
+### Database Settings
 
-Optimize for your API tiers:
-
-```yaml
-api_limits:
-  finnhub:
-    calls_per_day: 1000         # Free tier limit
-    calls_per_minute: 60
-  openai:
-    max_requests_per_day: 50    # Cost control
-    max_tokens_per_request: 1000
-```
-
-### Processing Limits
-
-Balance speed vs. cost:
-
-```yaml
-news_ingestion:
-  max_daily_headlines: 50       # Process 50 headlines/day
-  max_daily_ai_calls: 75        # Use 75 AI calls/day
-  batching:
-    max_batch_wait_time: 180    # 3-minute batch wait
-    max_headlines_per_batch: 8  # 8 headlines per batch
-```
-
-### Memory Optimization
-
-For large datasets:
+Optimize database performance:
 
 ```yaml
 database:
-  path: data/marketman.db
   type: sqlite
-  cleanup_old_records: true
-  max_records_per_table: 10000
+  path: data/marketman.db
+  backup_enabled: true
+  backup_interval_hours: 24
+```
+
+### Logging Configuration
+
+Configure logging behavior:
+
+```yaml
+logging:
+  level: INFO                   # DEBUG, INFO, WARNING, ERROR
+  file: logs/marketman.log
+  max_size_mb: 100
+  backup_count: 5
+```
+
+### API Rate Limits
+
+Monitor and adjust API usage:
+
+```yaml
+# Built-in rate limiting
+news_ingestion:
+  max_daily_headlines: 50       # Adjust based on API limits
+  max_daily_ai_calls: 75        # Monitor OpenAI usage
 ```
 
 ## ✅ Validation
 
-### Validate Configuration
+### Configuration Validation
 
-Check your settings:
+Validate your configuration:
 
 ```bash
+# Validate all configuration files
 python marketman config validate
-```
 
-This checks:
-- ✅ API keys are configured
-- ✅ Risk limits are reasonable
-- ✅ API limits are within bounds
-- ✅ File permissions are correct
-- ✅ Database connectivity
-
-### Show Current Settings
-
-View current configuration:
-
-```bash
+# Show current configuration
 python marketman config show
+
+# Test specific components
+python marketman news test
 ```
 
-### Reload Configuration
+### Common Validation Errors
 
-After making changes:
+#### Missing API Keys
+```
+Error: Missing required API key: openai.api_key
+Solution: Add your OpenAI API key to config/settings.yaml
+```
+
+#### Invalid File Paths
+```
+Error: Database path not accessible: data/marketman.db
+Solution: Ensure data/ directory exists and is writable
+```
+
+#### Invalid Values
+```
+Error: Invalid confidence_threshold: 15 (must be 1-10)
+Solution: Set confidence_threshold to a value between 1 and 10
+```
+
+### Configuration Testing
+
+Test individual components:
 
 ```bash
-python marketman config reload
+# Test news sources
+python marketman news test
+
+# Test Pushover notifications
+python src/monitoring/marketman_monitor.py --test
+
+# Test database connection
+python -c "from src.core.database.db_manager import DatabaseManager; print('Database OK')"
 ```
 
 ## 🔧 Advanced Configuration
 
-### Custom Keywords
+### Custom Strategies
 
-Add your own keywords:
-
-```yaml
-news_ingestion:
-  keywords:
-    - "ETF"
-    - "SPY"
-    - "QQQ"
-    - "interest rate"
-    - "Fed"
-    - "earnings"
-    # Add your custom keywords here
-```
-
-### Source Weights
-
-Prioritize news sources:
+Add custom trading strategies:
 
 ```yaml
-news_ingestion:
-  multi_source_validation:
-    source_weights:
-      Reuters: 5
-      Bloomberg: 5
-      Financial Times: 5
-      CNBC: 4
-      MarketWatch: 4
-      Yahoo Finance: 3
-      TechCrunch: 3
-      unknown: 1
+# Custom Strategy Example
+custom_strategy:
+  name: "Custom Momentum Strategy"
+  enabled: true
+  
+  # Define your strategy parameters
+  parameters:
+    lookback_period: 20
+    momentum_threshold: 0.05
+    volume_multiplier: 1.5
+  
+  # Define entry/exit conditions
+  conditions:
+    entry:
+      - "price > sma_20"
+      - "volume > avg_volume * 1.5"
+    exit:
+      - "price < sma_20"
+      - "stop_loss_hit"
 ```
 
-### Tracked ETFs
+### Environment-Specific Settings
 
-Specify which ETFs to monitor:
+Use different configurations for different environments:
+
+```bash
+# Development
+cp config/settings.yaml config/settings.dev.yaml
+
+# Production
+cp config/settings.yaml config/settings.prod.yaml
+
+# Use specific config
+python marketman --config config/settings.prod.yaml news cycle
+```
+
+### Configuration Inheritance
+
+Override default settings:
 
 ```yaml
+# Override specific settings
+risk:
+  max_daily_loss: 0.03          # More conservative for production
+  
 news_ingestion:
-  tracked_tickers:
-    - BOTZ    # Robotics & Automation
-    - ROBO    # Robotics
-    - ICLN    # Clean Energy
-    - TAN     # Solar Energy
-    - LIT     # Lithium & Battery Tech
-    - SMH     # Semiconductor
-    # Add your preferred ETFs
+  max_daily_ai_calls: 50        # Reduce costs in production
 ```
 
-## 🚨 Troubleshooting
+## 🚫 Not Implemented
 
-### Common Issues
+The following configuration features are **NOT YET IMPLEMENTED**:
 
-#### "Configuration validation failed"
-- Check all required API keys in `.env`
-- Ensure YAML syntax is correct
-- Run `python marketman config validate` for details
-
-#### "API rate limit exceeded"
-- Reduce `calls_per_day` limits
-- Increase `calls_per_minute` delays
-- Check your API tier limits
-
-#### "No signals generated"
-- Lower `min_relevance_score` threshold
-- Reduce `min_confidence_threshold`
-- Check news sources are working
-
-#### "High API costs"
-- Reduce `max_daily_ai_calls`
-- Lower `max_tokens_per_request`
-- Use more aggressive filtering
-
-### Configuration Best Practices
-
-1. **Start Conservative**: Begin with low limits and increase gradually
-2. **Monitor Costs**: Track API usage and adjust limits
-3. **Test Changes**: Validate configuration after changes
-4. **Backup Settings**: Keep copies of working configurations
-5. **Document Changes**: Note what works and what doesn't
+1. **Environment Variables** - No .env file support
+2. **Configuration Encryption** - No encrypted configuration
+3. **Dynamic Configuration** - No runtime configuration changes
+4. **Configuration Templates** - No template system
+5. **Configuration Validation Schema** - Basic validation only
+6. **Configuration Migration** - No automatic migration system
 
 ---
 
-**Next**: [Development Guide](development.md) for contributors 
+**Next**: [API Reference](api-reference.md) for technical details 

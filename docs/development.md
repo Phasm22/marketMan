@@ -41,7 +41,8 @@ Complete guide for developers contributing to MarketMan.
 
 3. **Configure environment**:
    ```bash
-   cp .env.example .env
+   # Create settings.yaml with your API keys
+   cp config/settings.yaml.example config/settings.yaml
    # Add your API keys for testing
    ```
 
@@ -57,25 +58,54 @@ marketMan/
 ├── src/                          # Source code
 │   ├── core/                     # Core business logic
 │   │   ├── signals/              # Signal generation
+│   │   │   ├── news_signal_orchestrator.py
+│   │   │   ├── etf_signal_engine.py
+│   │   │   └── pattern_recognizer.py
 │   │   ├── ingestion/            # Data ingestion
+│   │   │   ├── news_orchestrator.py
+│   │   │   ├── news_filter.py
+│   │   │   ├── news_batcher.py
+│   │   │   └── news_sources/
 │   │   ├── database/             # Database management
+│   │   │   ├── db_manager.py
+│   │   │   └── market_memory.py
 │   │   ├── risk/                 # Risk management
+│   │   │   └── position_sizing.py
 │   │   ├── journal/              # Trading journal
+│   │   │   ├── trade_journal.py
+│   │   │   ├── performance_tracker.py
+│   │   │   ├── alert_batcher.py
+│   │   │   └── signal_logger.py
 │   │   ├── options/              # Options trading
+│   │   │   └── scalping_strategy.py
 │   │   ├── utils/                # Shared utilities
 │   │   └── __init__.py
 │   ├── integrations/             # External integrations
+│   │   ├── pushover_client.py
+│   │   ├── notion_reporter.py
+│   │   ├── fidelity_integration.py
+│   │   ├── gmail_organizer.py
+│   │   └── notion_journal.py
 │   ├── cli/                      # Command-line interface
+│   │   ├── main.py
+│   │   └── commands/
+│   ├── monitoring/               # System monitoring
+│   │   └── marketman_monitor.py
 │   └── __init__.py
 ├── tests/                        # Test suite
 │   ├── unit/                     # Unit tests
 │   ├── integration/              # Integration tests
 │   └── fixtures/                 # Test data
 ├── config/                       # Configuration files
+│   ├── settings.yaml             # Main configuration
+│   ├── strategies.yaml           # Strategy configuration
+│   ├── brokers.yaml              # Broker configuration
+│   └── credentials/              # API credentials
 ├── docs/                         # Documentation
 ├── scripts/                      # Utility scripts
 ├── bin/                          # Executable scripts
-└── setup/                        # Setup scripts
+├── data/                         # Database files
+└── logs/                         # Log files
 ```
 
 ### Key Modules
@@ -86,31 +116,40 @@ marketMan/
 - **`database/`** - Database abstraction and management
 - **`risk/`** - Risk management and position sizing
 - **`journal/`** - Trade journaling and performance tracking
+- **`options/`** - Options trading strategies
 
 #### Integration Modules
 - **`integrations/`** - External service integrations
 - **`cli/`** - Command-line interface
+- **`monitoring/`** - System monitoring
 - **`utils/`** - Shared utilities and helpers
 
 ## 🔧 Development Setup
 
 ### Environment Variables
 
-Create `.env` for development:
+Create `config/settings.yaml` for development:
 
-```bash
+```yaml
 # Development settings
-DEBUG=true
-LOG_LEVEL=DEBUG
+app:
+  debug: true
+  log_level: DEBUG
 
 # API Keys (use test keys for development)
-OPENAI_API_KEY=sk-test-...
-FINNHUB_KEY=test-key
-NEWS_API=test-key
-NEWS_DATA_KEY=test-key
+openai:
+  api_key: sk-test-...
+finnhub:
+  api_key: test-key
+newsapi:
+  api_key: test-key
+newdata:
+  api_key: test-key
 
 # Test database
-DATABASE_URL=sqlite:///test_marketman.db
+database:
+  type: sqlite
+  path: data/test_marketman.db
 ```
 
 ### Database Setup
@@ -119,7 +158,7 @@ For development, use SQLite:
 
 ```bash
 # Initialize test database
-python -c "from src.core.database.db_manager import init_database; init_database()"
+python -c "from src.core.database.db_manager import DatabaseManager; db = DatabaseManager('data/test_marketman.db'); db.init_database()"
 ```
 
 ### Pre-commit Hooks
@@ -198,11 +237,7 @@ def calculate_position_size(
         Position size in dollars
         
     Raises:
-        ValueError: If risk_percentage is invalid
-        
-    Example:
-        >>> calculate_position_size(10000, 0.02)
-        200.0
+        ValueError: If risk_percentage is not between 0 and 1
     """
     if not 0 <= risk_percentage <= 1:
         raise ValueError("Risk percentage must be between 0 and 1")
@@ -216,17 +251,19 @@ def calculate_position_size(
 
 ```
 tests/
-├── unit/                    # Unit tests
+├── unit/                         # Unit tests
 │   ├── test_signals.py
 │   ├── test_ingestion.py
-│   └── test_risk.py
-├── integration/             # Integration tests
-│   ├── test_api_integration.py
+│   ├── test_risk.py
+│   └── test_journal.py
+├── integration/                  # Integration tests
+│   ├── test_news_cycle.py
+│   ├── test_signal_generation.py
 │   └── test_database.py
-├── fixtures/                # Test data
-│   ├── sample_news.json
-│   └── sample_signals.json
-└── conftest.py             # Pytest configuration
+└── fixtures/                     # Test data
+    ├── sample_news.json
+    ├── sample_signals.json
+    └── sample_trades.json
 ```
 
 ### Running Tests
@@ -236,7 +273,7 @@ tests/
 pytest
 
 # Run with coverage
-pytest --cov=src --cov-report=html
+pytest --cov=src
 
 # Run specific test file
 pytest tests/unit/test_signals.py
@@ -244,13 +281,13 @@ pytest tests/unit/test_signals.py
 # Run with verbose output
 pytest -v
 
-# Run only integration tests
+# Run integration tests only
 pytest tests/integration/
 ```
 
-### Writing Tests
+### Test Examples
 
-Follow these patterns:
+#### Unit Test Example
 
 ```python
 import pytest
@@ -258,143 +295,203 @@ from unittest.mock import Mock, patch
 from src.core.signals.news_signal_orchestrator import NewsSignalOrchestrator
 
 class TestNewsSignalOrchestrator:
-    """Test cases for NewsSignalOrchestrator."""
+    """Test NewsSignalOrchestrator class."""
     
-    @pytest.fixture
-    def orchestrator(self):
-        """Create test orchestrator instance."""
-        return NewsSignalOrchestrator()
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.config = {
+            'openai': {'api_key': 'test-key'},
+            'news_ingestion': {'max_daily_ai_calls': 10}
+        }
+        self.orchestrator = NewsSignalOrchestrator(self.config)
     
-    @pytest.fixture
-    def sample_news(self):
-        """Sample news data for testing."""
-        return [
+    def test_process_signals_empty_input(self):
+        """Test processing signals with empty input."""
+        result = self.orchestrator.process_signals([], 24)
+        assert result['signals'] == []
+        assert result['processed_count'] == 0
+    
+    @patch('src.core.signals.news_signal_orchestrator.OpenAI')
+    def test_process_signals_with_news(self, mock_openai):
+        """Test processing signals with news items."""
+        # Mock OpenAI response
+        mock_client = Mock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.return_value.choices[0].message.content = '{"signal_type": "bullish", "confidence": 8}'
+        
+        news_items = [
             {
-                "title": "Test news item",
-                "content": "Test content",
-                "source": "Test Source",
-                "timestamp": "2024-01-01T00:00:00Z"
+                'title': 'Test News',
+                'content': 'Test content',
+                'source': 'test',
+                'timestamp': '2024-01-01T10:00:00Z'
             }
         ]
+        
+        result = self.orchestrator.process_signals(news_items, 24)
+        assert len(result['signals']) > 0
+        assert result['processed_count'] == 1
+```
+
+#### Integration Test Example
+
+```python
+import pytest
+from src.core.ingestion.news_orchestrator import NewsIngestionOrchestrator
+from src.core.database.db_manager import DatabaseManager
+
+class TestNewsCycle:
+    """Test complete news processing cycle."""
     
-    def test_process_news_generates_signals(self, orchestrator, sample_news):
-        """Test that news processing generates signals."""
-        with patch('src.core.signals.news_signal_orchestrator.OpenAI') as mock_openai:
-            mock_openai.return_value.chat.completions.create.return_value = Mock(
-                choices=[Mock(message=Mock(content='{"signal": "bullish", "confidence": 8}'))]
-            )
-            
-            signals = orchestrator.process_news(sample_news)
-            
-            assert len(signals) > 0
-            assert signals[0].signal == "bullish"
-            assert signals[0].confidence == 8
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.db = DatabaseManager(':memory:')
+        self.db.init_database()
+        
+        self.config = {
+            'finnhub': {'api_key': 'test-key'},
+            'newsapi': {'api_key': 'test-key'},
+            'newdata': {'api_key': 'test-key'}
+        }
+        self.orchestrator = NewsIngestionOrchestrator(self.config)
     
-    def test_invalid_news_raises_exception(self, orchestrator):
-        """Test that invalid news raises appropriate exception."""
-        with pytest.raises(ValueError, match="Invalid news data"):
-            orchestrator.process_news([])
+    @patch('src.core.ingestion.news_sources.finnhub.FinnhubNewsSource.fetch_news')
+    def test_news_cycle(self, mock_fetch):
+        """Test complete news processing cycle."""
+        # Mock news source response
+        mock_fetch.return_value = [
+            {
+                'title': 'Test News',
+                'content': 'Test content',
+                'source': 'finnhub',
+                'timestamp': '2024-01-01T10:00:00Z'
+            }
+        ]
+        
+        result = self.orchestrator.process_news_cycle(['AAPL'], 24)
+        assert result['processed_count'] > 0
+        assert result['filtered_count'] >= 0
 ```
 
 ### Test Data
 
-Use fixtures for test data:
+Create test fixtures in `tests/fixtures/`:
 
 ```python
 # tests/fixtures/sample_news.json
 {
-  "news_items": [
-    {
-      "title": "Tesla Reports Strong Q4 Earnings",
-      "content": "Tesla exceeded analyst expectations...",
-      "source": "Reuters",
-      "timestamp": "2024-01-01T00:00:00Z",
-      "tickers": ["TSLA", "LIT", "DRIV"]
-    }
-  ]
+    "news_items": [
+        {
+            "title": "Apple Reports Strong Earnings",
+            "content": "Apple Inc. reported better-than-expected quarterly earnings...",
+            "source": "reuters",
+            "timestamp": "2024-01-01T10:00:00Z",
+            "tickers": ["AAPL"],
+            "relevance_score": 0.85,
+            "sentiment_score": 0.7
+        }
+    ]
 }
-
-# tests/conftest.py
-import pytest
-import json
-from pathlib import Path
-
-@pytest.fixture
-def sample_news_data():
-    """Load sample news data from fixture file."""
-    fixture_path = Path(__file__).parent / "fixtures" / "sample_news.json"
-    with open(fixture_path) as f:
-        return json.load(f)
 ```
 
 ## 🏗️ Architecture
 
-### Design Principles
+### Design Patterns
 
-1. **Modularity** - Each module has a single responsibility
-2. **Testability** - All components are easily testable
-3. **Configuration** - External configuration for all settings
-4. **Error Handling** - Graceful error handling and logging
-5. **Performance** - Efficient processing and memory usage
+#### Orchestrator Pattern
 
-### Core Components
+Used throughout the application:
 
-#### News Processing Pipeline
-
+```python
+class ComponentOrchestrator:
+    """Orchestrates component operations."""
+    
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        self.subcomponents = self._initialize_subcomponents()
+    
+    def _initialize_subcomponents(self) -> Dict[str, Any]:
+        """Initialize subcomponents."""
+        return {
+            'filter': NewsFilter(self.config),
+            'batcher': NewsBatcher(self.config),
+            'analyzer': NewsAnalyzer(self.config)
+        }
+    
+    def process(self, input_data: Any) -> Any:
+        """Process data through the pipeline."""
+        try:
+            filtered_data = self.subcomponents['filter'].process(input_data)
+            batched_data = self.subcomponents['batcher'].process(filtered_data)
+            analyzed_data = self.subcomponents['analyzer'].process(batched_data)
+            return analyzed_data
+        except Exception as e:
+            self._handle_error(e)
+            return None
 ```
-News Sources → Filtering → Batching → AI Analysis → Signal Generation → Output
+
+#### Strategy Pattern
+
+Used for different processing strategies:
+
+```python
+from abc import ABC, abstractmethod
+
+class BatchingStrategy(ABC):
+    """Abstract batching strategy."""
+    
+    @abstractmethod
+    def should_batch(self, items: List[Any]) -> bool:
+        """Determine if items should be batched."""
+        pass
+    
+    @abstractmethod
+    def create_batch(self, items: List[Any]) -> Dict[str, Any]:
+        """Create a batch from items."""
+        pass
+
+class SmartBatchingStrategy(BatchingStrategy):
+    """Smart batching based on content and timing."""
+    
+    def should_batch(self, items: List[Any]) -> bool:
+        return len(items) >= 3 or self._time_threshold_reached(items)
+    
+    def create_batch(self, items: List[Any]) -> Dict[str, Any]:
+        return {
+            'items': items,
+            'batch_type': 'smart',
+            'created_at': datetime.now(),
+            'summary': self._create_summary(items)
+        }
 ```
 
-#### Signal Generation
+### Error Handling
 
-```
-News Items → Sentiment Analysis → Technical Analysis → Risk Assessment → Signals
-```
+Consistent error handling throughout:
 
-#### Risk Management
+```python
+class MarketManError(Exception):
+    """Base exception for MarketMan."""
+    pass
 
-```
-Position Sizing → Stop Loss → Portfolio Limits → Execution
-```
+class ConfigurationError(MarketManError):
+    """Configuration-related errors."""
+    pass
 
-### Database Schema
+class APIError(MarketManError):
+    """API-related errors."""
+    pass
 
-```sql
--- News items
-CREATE TABLE news_items (
-    id INTEGER PRIMARY KEY,
-    title TEXT NOT NULL,
-    content TEXT,
-    source TEXT,
-    timestamp DATETIME,
-    relevance_score REAL,
-    sentiment_score REAL
-);
-
--- Signals
-CREATE TABLE signals (
-    id INTEGER PRIMARY KEY,
-    news_item_id INTEGER,
-    signal_type TEXT,
-    confidence INTEGER,
-    etfs TEXT,
-    reasoning TEXT,
-    timestamp DATETIME,
-    FOREIGN KEY (news_item_id) REFERENCES news_items(id)
-);
-
--- Trades
-CREATE TABLE trades (
-    id INTEGER PRIMARY KEY,
-    signal_id INTEGER,
-    symbol TEXT,
-    entry_price REAL,
-    exit_price REAL,
-    quantity INTEGER,
-    pnl REAL,
-    timestamp DATETIME,
-    FOREIGN KEY (signal_id) REFERENCES signals(id)
-);
+def safe_api_call(func):
+    """Decorator for safe API calls."""
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except requests.RequestException as e:
+            raise APIError(f"API call failed: {e}")
+        except Exception as e:
+            raise MarketManError(f"Unexpected error: {e}")
+    return wrapper
 ```
 
 ## 🤝 Contributing
@@ -403,231 +500,129 @@ CREATE TABLE trades (
 
 1. **Create feature branch**:
    ```bash
-   git checkout -b feature/amazing-feature
+   git checkout -b feature/new-feature
    ```
 
 2. **Make changes**:
-   - Write code following standards
+   - Follow code standards
    - Add tests for new functionality
    - Update documentation
 
-3. **Run quality checks**:
+3. **Run tests**:
    ```bash
+   pytest tests/ -v
    pre-commit run --all-files
-   pytest
    ```
 
-4. **Commit changes**:
-   ```bash
-   git add .
-   git commit -m "feat: add amazing feature"
-   ```
-
-5. **Push and create PR**:
-   ```bash
-   git push origin feature/amazing-feature
-   # Create pull request on GitHub
-   ```
-
-### Commit Message Format
-
-Use conventional commits:
-
-```
-type(scope): description
-
-feat(signals): add new technical indicator
-fix(api): handle rate limit errors
-docs(readme): update installation instructions
-test(risk): add position sizing tests
-refactor(database): improve query performance
-```
-
-### Pull Request Guidelines
-
-1. **Title**: Clear, descriptive title
-2. **Description**: Explain what and why, not how
-3. **Tests**: Include tests for new functionality
-4. **Documentation**: Update relevant docs
-5. **Screenshots**: For UI changes
+4. **Create pull request**:
+   - Describe changes clearly
+   - Include test results
+   - Update relevant documentation
 
 ### Code Review Checklist
 
 - [ ] Code follows style guidelines
-- [ ] Tests are included and passing
-- [ ] Documentation is updated
-- [ ] No breaking changes (or documented)
-- [ ] Performance impact considered
-- [ ] Security implications reviewed
+- [ ] Tests pass
+- [ ] Documentation updated
+- [ ] No security issues
+- [ ] Performance considerations
+- [ ] Error handling implemented
+
+### Commit Message Format
+
+Use conventional commit format:
+
+```
+type(scope): description
+
+[optional body]
+
+[optional footer]
+```
+
+Examples:
+```
+feat(signals): add new signal confidence algorithm
+fix(api): resolve rate limiting issue
+docs(readme): update installation instructions
+test(journal): add performance tracking tests
+```
 
 ## 🚀 Deployment
 
 ### Production Setup
 
-1. **Environment**:
+1. **Environment preparation**:
    ```bash
-   # Production environment variables
-   DEBUG=false
-   LOG_LEVEL=INFO
-   DATABASE_URL=postgresql://user:pass@host/db
+   # Create production environment
+   python -m venv venv_prod
+   source venv_prod/bin/activate
+   pip install -r requirements.txt
    ```
 
-2. **Database**:
+2. **Configuration**:
    ```bash
-   # Use PostgreSQL for production
-   pip install psycopg2-binary
+   # Create production config
+   cp config/settings.yaml config/settings.prod.yaml
+   # Edit with production API keys
    ```
 
-3. **Process Management**:
+3. **Database setup**:
    ```bash
-   # Use systemd or supervisor
+   # Initialize production database
+   python -c "from src.core.database.db_manager import DatabaseManager; db = DatabaseManager('data/marketman.db'); db.init_database()"
+   ```
+
+4. **Service setup**:
+   ```bash
+   # Copy systemd service
    sudo cp config/marketman.service /etc/systemd/system/
    sudo systemctl enable marketman
    sudo systemctl start marketman
    ```
 
-### Docker Deployment
-
-```dockerfile
-# Dockerfile
-FROM python:3.9-slim
-
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-COPY . .
-RUN pip install -e .
-
-CMD ["python", "marketman", "news", "cycle"]
-```
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  marketman:
-    build: .
-    environment:
-      - DATABASE_URL=postgresql://user:pass@db/marketman
-    depends_on:
-      - db
-    volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-  
-  db:
-    image: postgres:13
-    environment:
-      POSTGRES_DB: marketman
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: pass
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-volumes:
-  postgres_data:
-```
-
 ### Monitoring
 
 Set up monitoring for production:
 
-```python
-# src/core/monitoring/health_check.py
-import logging
-from typing import Dict, Any
+```bash
+# Check service status
+sudo systemctl status marketman
 
-def health_check() -> Dict[str, Any]:
-    """Perform system health check."""
-    try:
-        # Check database connectivity
-        # Check API endpoints
-        # Check disk space
-        # Check memory usage
-        
-        return {
-            "status": "healthy",
-            "timestamp": datetime.now().isoformat(),
-            "checks": {
-                "database": "ok",
-                "apis": "ok",
-                "disk": "ok",
-                "memory": "ok"
-            }
-        }
-    except Exception as e:
-        logging.error(f"Health check failed: {e}")
-        return {
-            "status": "unhealthy",
-            "error": str(e)
-        }
+# View logs
+sudo journalctl -u marketman -f
+
+# Monitor system resources
+htop
+df -h
 ```
 
-## 🔍 Debugging
-
-### Logging
-
-Configure logging for development:
-
-```python
-import logging
-
-# Development logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/marketman.log'),
-        logging.StreamHandler()
-    ]
-)
-```
-
-### Debug Mode
-
-Enable debug mode for detailed output:
+### Backup Strategy
 
 ```bash
-export DEBUG=true
-python marketman news cycle
+# Database backup
+cp data/marketman.db data/backup/marketman_$(date +%Y%m%d_%H%M%S).db
+
+# Configuration backup
+cp config/settings.yaml config/backup/settings_$(date +%Y%m%d_%H%M%S).yaml
+
+# Log rotation
+logrotate /etc/logrotate.d/marketman
 ```
 
-### Profiling
+## 🚫 Not Implemented
 
-Profile performance bottlenecks:
+The following development features are **NOT YET IMPLEMENTED**:
 
-```python
-import cProfile
-import pstats
-
-def profile_function(func, *args, **kwargs):
-    """Profile a function's performance."""
-    profiler = cProfile.Profile()
-    profiler.enable()
-    result = func(*args, **kwargs)
-    profiler.disable()
-    
-    stats = pstats.Stats(profiler)
-    stats.sort_stats('cumulative')
-    stats.print_stats(10)
-    
-    return result
-```
-
-## 📚 Resources
-
-### Documentation
-- [Python Style Guide](https://www.python.org/dev/peps/pep-0008/)
-- [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
-- [Pytest Documentation](https://docs.pytest.org/)
-
-### Tools
-- [Black](https://black.readthedocs.io/) - Code formatter
-- [isort](https://pycqa.github.io/isort/) - Import sorter
-- [Flake8](https://flake8.pycqa.org/) - Linter
-- [pre-commit](https://pre-commit.com/) - Git hooks
+1. **Automated Testing Pipeline** - No CI/CD setup
+2. **Code Coverage Reports** - No coverage tracking
+3. **Performance Benchmarking** - No performance tests
+4. **Security Scanning** - No security analysis
+5. **Docker Containerization** - No container support
+6. **Database Migrations** - No migration system
+7. **API Documentation** - No OpenAPI/Swagger docs
+8. **Load Testing** - No load testing framework
 
 ---
 
-**Next**: [API Reference](api-reference.md) for technical API documentation 
+**Next**: [API Reference](api-reference.md) for technical details 

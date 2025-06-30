@@ -40,8 +40,9 @@ Before using MarketMan, ensure you have:
 
 3. **Set up environment**:
    ```bash
-   cp .env.example .env
-   # Edit .env with your API keys
+   # Create settings.yaml file with your API keys
+   cp config/settings.yaml.example config/settings.yaml
+   # Edit config/settings.yaml with your API keys
    ```
 
 4. **Validate configuration**:
@@ -53,7 +54,7 @@ Before using MarketMan, ensure you have:
 
 1. **Test the system**:
    ```bash
-   python marketman status
+   python marketman news status
    ```
 
 2. **Run a news cycle**:
@@ -72,8 +73,8 @@ Before using MarketMan, ensure you have:
 
 MarketMan processes news through several stages:
 
-1. **Collection** - Gathers news from multiple sources
-2. **Filtering** - Removes irrelevant content using keywords
+1. **Collection** - Gathers news from multiple sources (Finnhub, NewsAPI, NewData)
+2. **Filtering** - Removes irrelevant content using keywords and relevance scoring
 3. **Batching** - Groups related news for efficient processing
 4. **AI Analysis** - Uses GPT-4 to analyze sentiment and generate signals
 5. **Validation** - Cross-references signals across sources
@@ -99,7 +100,7 @@ Signals are scored 1-10 based on:
 
 1. **Check system status**:
    ```bash
-   python marketman status
+   python marketman news status
    ```
 
 2. **Process overnight news**:
@@ -120,19 +121,19 @@ Signals are scored 1-10 based on:
 ### Continuous Monitoring
 
 - **Set up automated alerts** via Pushover
-- **Monitor performance** with the dashboard
+- **Monitor performance** with the journal commands
 - **Review daily summaries** in Notion (if configured)
 
 ### End-of-Day Review
 
 1. **Check performance**:
    ```bash
-   python marketman performance show
+   python marketman journal performance
    ```
 
 2. **Review trades**:
    ```bash
-   python marketman journal performance
+   python marketman journal list-trades
    ```
 
 3. **Update configuration** if needed:
@@ -171,23 +172,29 @@ alerts:
 
 ### Environment Variables
 
-Required in `.env` file:
-```bash
+Required in `config/settings.yaml`:
+```yaml
 # OpenAI
-OPENAI_API_KEY=your_openai_key
+openai:
+  api_key: your_openai_key
 
 # News APIs
-FINNHUB_KEY=your_finnhub_key
-NEWS_API=your_newsapi_key
-NEWS_DATA_KEY=your_newdata_key
+finnhub:
+  api_key: your_finnhub_key
+newsapi:
+  api_key: your_newsapi_key
+newdata:
+  api_key: your_newdata_key
 
 # Notifications
-PUSHOVER_TOKEN=your_pushover_token
-PUSHOVER_USER=your_pushover_user
+pushover:
+  token: your_pushover_token
+  user_key: your_pushover_user
 
 # Notion (optional)
-NOTION_TOKEN=your_notion_token
-NOTION_DATABASE_ID=your_database_id
+notion:
+  token: your_notion_token
+  database_id: your_database_id
 ```
 
 ## 📱 Monitoring & Alerts
@@ -199,105 +206,271 @@ MarketMan sends notifications for:
 - **Risk warnings** (market volatility)
 - **System alerts** (errors, warnings)
 
-#### Setup Pushover
-1. Create account at [pushover.net](https://pushover.net)
-2. Get API token and user key
-3. Add to `.env` file
-4. Test with: `python marketman pushover test`
+### System Monitoring
 
-#### Alert Types
-- **Signal Alerts**: Trading opportunities
-- **Risk Warnings**: Market volatility alerts
-- **System Alerts**: Service status updates
-
-### Performance Monitoring
-
-#### Dashboard
+Monitor system health:
 ```bash
+# Check system status
+python marketman news status
+
+# Run system monitoring
+python src/monitoring/marketman_monitor.py
+
+# Continuous monitoring
+python src/monitoring/marketman_monitor.py --loop 30
+```
+
+## 🔧 Available Commands
+
+### News Commands
+
+```bash
+# Check news system status
+python marketman news status
+
+# Run news processing cycle
+python marketman news cycle
+
+# Test news sources
+python marketman news test
+
+# Generate signals from news
+python marketman news signals
+```
+
+### Signal Commands
+
+```bash
+# Run signal processing
+python marketman signals run
+
+# Check signal status
+python marketman signals status
+
+# Run signal backtest (not implemented)
+python marketman signals backtest
+```
+
+### Alert Commands
+
+```bash
+# Check for new alerts
+python marketman alerts check
+
+# Send pending alerts
+python marketman alerts send
+
+# Check alert status
+python marketman alerts status
+```
+
+### Performance Commands
+
+```bash
+# Show performance dashboard
 python marketman performance show
+
+# Update performance data
+python marketman performance update
+
+# Export performance data
+python marketman performance export
 ```
 
-Shows:
-- Total trades and win rate
-- P&L and drawdown
-- Signal accuracy
-- Sector performance
+### Options Commands
 
-#### Performance Reports
 ```bash
-python marketman journal performance --days 30
+# Run options scalping
+python marketman options scalp
+
+# Analyze options
+python marketman options analyze
+
+# Run options backtest (not implemented)
+python marketman options backtest
 ```
 
-Generates detailed performance analysis.
+### Risk Commands
 
-## 🔧 Troubleshooting
+```bash
+# Analyze portfolio risk
+python marketman risk analyze
+
+# Check risk limits
+python marketman risk limits
+
+# Calculate position size
+python marketman risk position-size
+```
+
+### Journal Commands
+
+```bash
+# List trades
+python marketman journal list-trades
+
+# Show performance
+python marketman journal performance
+
+# Show signal analysis
+python marketman journal signals
+
+# Setup Fidelity integration
+python marketman journal setup-fidelity
+
+# Import Fidelity trades
+python marketman journal import-fidelity
+
+# Add manual trade
+python marketman journal add-trade
+
+# Add manual signal
+python marketman journal add-signal
+
+# Sync with Notion
+python marketman journal sync-notion
+
+# Analyze performance
+python marketman journal analyze
+```
+
+### Configuration Commands
+
+```bash
+# Validate configuration
+python marketman config validate
+
+# Show configuration
+python marketman config show
+
+# Reload configuration
+python marketman config reload
+```
+
+## 🗄️ Database Management
+
+### Database Location
+
+MarketMan uses SQLite databases stored in the `data/` directory:
+- `data/marketman.db` - Main database
+- `data/marketman_memory.db` - Market memory cache
+- `data/alert_batch.db` - Alert batching data
+
+### Backup and Recovery
+
+```bash
+# Manual backup
+cp data/marketman.db data/marketman_backup_$(date +%Y%m%d).db
+
+# Restore from backup
+cp data/marketman_backup_20240101.db data/marketman.db
+```
+
+## 🔍 Troubleshooting
 
 ### Common Issues
 
-#### "API rate limit exceeded"
+#### API Rate Limits
+- **Problem**: "API rate limit exceeded" errors
 - **Solution**: Reduce API call limits in `config/settings.yaml`
-- **Prevention**: Monitor usage with `python marketman status`
 
-#### "No signals generated"
-- **Check**: News sources are working
-- **Check**: AI API key is valid
-- **Check**: Confidence thresholds aren't too high
+#### Database Errors
+- **Problem**: Database connection issues
+- **Solution**: Check database file permissions and disk space
 
-#### "Configuration errors"
-- **Solution**: Run `python marketman config validate`
-- **Check**: All required API keys in `.env`
+#### Configuration Errors
+- **Problem**: "Configuration validation failed"
+- **Solution**: Run `python marketman config validate` to identify issues
 
-#### "Database errors"
-- **Solution**: Check database permissions
-- **Reset**: Delete `*.db` files and restart
+#### Signal Generation Issues
+- **Problem**: No signals being generated
+- **Solution**: Check news sources and AI API key configuration
 
 ### Debug Mode
 
-Enable debug logging:
+Enable verbose logging for troubleshooting:
 ```bash
-export DEBUG=true
-python marketman news cycle
+python marketman --verbose news cycle
 ```
 
 ### Log Files
 
-Check logs in `logs/` directory:
-- `marketman.log` - Main application log
-- `analyzer.log` - AI analysis log
+Check log files for detailed error information:
+- `logs/marketman.log` - Main application logs
+- `logs/marketman_cli.log` - CLI command logs
 
-### Getting Help
+## 📊 Performance Tracking
 
-1. **Check documentation**: `docs/` folder
-2. **Run diagnostics**: `python marketman status`
-3. **Validate config**: `python marketman config validate`
-4. **Create issue**: GitHub issues page
+### Trade Journal
 
-## 📊 Best Practices
+Track your trading performance:
+```bash
+# Add a trade
+python marketman journal add-trade --symbol AAPL --action Buy --quantity 100 --price 150.00
 
-### Risk Management
-- Start with paper trading
-- Use conservative position sizes
-- Set appropriate stop losses
-- Monitor daily loss limits
+# View trade history
+python marketman journal list-trades --days 30
 
-### Configuration
-- Validate settings regularly
-- Monitor API costs
-- Adjust thresholds based on performance
-- Keep backups of working configurations
+# Performance analysis
+python marketman journal performance --days 90
+```
 
-### Monitoring
-- Check system status daily
-- Review performance weekly
-- Monitor API usage
-- Keep logs for troubleshooting
+### Signal Analysis
 
-### Signal Quality
-- Focus on high-confidence signals (7+)
-- Consider market conditions
-- Use multiple timeframes
-- Don't chase every signal
+Analyze signal performance:
+```bash
+# View signal history
+python marketman journal signals --days 30
+
+# Add manual signal
+python marketman journal add-signal --type bullish --confidence 8 --symbol TSLA
+```
+
+### Fidelity Integration
+
+Import trades from Fidelity:
+```bash
+# Setup Fidelity integration
+python marketman journal setup-fidelity --email your@email.com
+
+# Import recent trades
+python marketman journal import-fidelity --days 30
+```
+
+## 🔗 Integrations
+
+### Notion Integration
+
+Sync data with Notion:
+```bash
+# Sync signals to Notion
+python marketman journal sync-notion
+
+# Add signal to Notion
+python marketman journal add-signal --sync-notion
+```
+
+### Gmail Organization
+
+Organize MarketMan emails:
+```bash
+# Run Gmail cleanup
+python src/monitoring/marketman_monitor.py --gmail-only
+```
+
+## 🚫 Not Implemented
+
+The following features are **NOT YET IMPLEMENTED**:
+
+1. **Web Dashboard** - CLI-only interface
+2. **RESTful API** - No web API endpoints
+3. **Backtesting Engine** - Empty module, no implementation
+4. **Real-time Trading** - Paper trading only
+5. **Advanced Risk Models** - Basic Kelly Criterion only
+6. **Advanced Authentication** - No user authentication system
+7. **Load Balancing** - Single instance only
+8. **Advanced Database Features** - No partitioning or sharding
 
 ---
 
-**Next**: [API Reference](api-reference.md) for technical details 
+**Next**: [Configuration](configuration.md) for detailed configuration options 

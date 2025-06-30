@@ -9,7 +9,6 @@ System architecture and design patterns for MarketMan.
 - [Data Flow](#data-flow)
 - [Component Design](#component-design)
 - [Database Design](#database-design)
-- [API Design](#api-design)
 - [Security](#security)
 - [Performance](#performance)
 - [Scalability](#scalability)
@@ -46,15 +45,15 @@ MarketMan is built as a modular, event-driven system with clear separation of co
 │  │             │  │             │  │             │            │
 │  │ • Filtering │  │ • Analysis  │  │ • Position  │            │
 │  │ • Batching  │  │ • Scoring   │  │   Sizing    │            │
-│  │ • Validation│  │ • Generation│  │ • Stop Loss │            │
+│  │ • Validation│  │ • Generation│  │ • Kelly     │            │
 │  └─────────────┘  └─────────────┘  └─────────────┘            │
 │                                                                 │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
 │  │   Journal   │  │   Options   │  │   Utils     │            │
 │  │             │  │             │  │             │            │
 │  │ • Tracking  │  │ • Scalping  │  │ • Config    │            │
-│  │ • Performance│  │ • Greeks    │  │ • Formatting│            │
-│  │ • Analytics │  │ • Strategies│  │ • Validation│            │
+│  │ • Performance│  │ • Strategy  │  │ • Formatting│            │
+│  │ • Analytics │  │ • Greeks    │  │ • Validation│            │
 │  └─────────────┘  └─────────────┘  └─────────────┘            │
 └─────────────────────────────────────────────────────────────────┘
          │                       │                       │
@@ -62,8 +61,8 @@ MarketMan is built as a modular, event-driven system with clear separation of co
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   CLI Interface │    │   Monitoring    │    │   External      │
 │                 │    │                 │    │   Integrations  │
-│ • Commands      │    │ • Health Checks │    │ • Brokers       │
-│ • Status        │    │ • Metrics       │    │ • APIs          │
+│ • Commands      │    │ • Health Checks │    │ • Fidelity      │
+│ • Status        │    │ • System Status │    │ • Gmail         │
 │ • Configuration │    │ • Alerts        │    │ • Services      │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
@@ -72,35 +71,50 @@ MarketMan is built as a modular, event-driven system with clear separation of co
 
 #### Core Components
 
-1. **Ingestion Layer**
-   - Multi-source news collection
-   - Intelligent filtering
-   - Batch processing
-   - Quality scoring
+1. **Ingestion Layer** ✅ **IMPLEMENTED**
+   - Multi-source news collection (Finnhub, NewsAPI, NewData)
+   - Intelligent filtering with relevance scoring
+   - Batch processing for efficiency
+   - Quality scoring and validation
 
-2. **Signal Generation Layer**
-   - AI-powered analysis
-   - Technical indicators
+2. **Signal Generation Layer** ✅ **IMPLEMENTED**
+   - AI-powered analysis using GPT-4
+   - Technical indicators and pattern recognition
    - Multi-source validation
-   - Confidence scoring
+   - Confidence scoring (1-10 scale)
 
-3. **Risk Management Layer**
-   - Position sizing
-   - Stop loss management
-   - Portfolio limits
-   - Kelly criterion
+3. **Risk Management Layer** ✅ **IMPLEMENTED**
+   - Position sizing using Kelly Criterion
+   - Portfolio risk management
+   - Stop loss calculations
+   - Risk limits enforcement
 
-4. **Journal Layer**
-   - Trade tracking
-   - Performance analytics
-   - Reporting
-   - Data export
+4. **Journal Layer** ✅ **IMPLEMENTED**
+   - Trade tracking and logging
+   - Performance analytics and reporting
+   - Signal logging and analysis
+   - Fidelity integration for trade import
 
-5. **Integration Layer**
-   - External APIs
-   - Notifications
-   - Database management
-   - Configuration
+5. **Integration Layer** ✅ **IMPLEMENTED**
+   - Pushover notifications
+   - Notion integration for reporting
+   - Gmail organization
+   - Fidelity trade import
+
+6. **Options Trading Layer** ✅ **IMPLEMENTED**
+   - Options scalping strategy
+   - Greeks calculations
+   - Position management
+
+7. **CLI Interface** ✅ **IMPLEMENTED**
+   - Command-line interface for all operations
+   - Status monitoring
+   - Configuration management
+
+8. **Monitoring Layer** ✅ **IMPLEMENTED**
+   - System health monitoring
+   - Host availability checks
+   - Automated alerts
 
 ## 🔄 Data Flow
 
@@ -160,8 +174,8 @@ News Item → Sentiment Analysis → Technical Analysis → Risk Assessment → 
     ▼              ▼                    ▼                    ▼
 Content        Sentiment Score      Technical Score      Risk Score
 Source         Confidence Level     Pattern Match        Position Size
-Tickers        Market Impact        Volume Analysis      Stop Loss
-Timestamp      Reasoning            Indicators           Portfolio Limits
+Tickers        Market Impact        Volume Analysis      Portfolio Limits
+Timestamp      Reasoning            Indicators           Stop Loss
 ```
 
 ### Alert Processing Flow
@@ -478,89 +492,6 @@ class Trade:
     created_at: datetime
 ```
 
-## 🔌 API Design
-
-### RESTful API Structure
-
-```python
-# API Endpoints
-/api/v1/news/           # News items
-/api/v1/signals/        # Trading signals
-/api/v1/trades/         # Trade data
-/api/v1/performance/    # Performance metrics
-/api/v1/alerts/         # Alert management
-/api/v1/config/         # Configuration
-
-# Example API Response
-{
-    "status": "success",
-    "data": {
-        "signals": [
-            {
-                "id": "signal_123",
-                "signal_type": "bullish",
-                "confidence": 8,
-                "title": "Tesla Reports Strong Earnings",
-                "reasoning": "Exceeded analyst expectations...",
-                "etfs": ["TSLA", "LIT", "DRIV"],
-                "sector": "Electric Vehicles",
-                "timestamp": "2024-01-01T10:00:00Z"
-            }
-        ],
-        "pagination": {
-            "page": 1,
-            "per_page": 10,
-            "total": 150
-        }
-    },
-    "meta": {
-        "timestamp": "2024-01-01T10:00:00Z",
-        "version": "1.0.0"
-    }
-}
-```
-
-### API Error Handling
-
-```python
-class APIError(Exception):
-    """Base API error."""
-    
-    def __init__(self, message: str, status_code: int = 400):
-        self.message = message
-        self.status_code = status_code
-        super().__init__(self.message)
-
-class ValidationError(APIError):
-    """Validation error."""
-    pass
-
-class RateLimitError(APIError):
-    """Rate limit error."""
-    pass
-
-class NotFoundError(APIError):
-    """Resource not found error."""
-    pass
-
-# Error Response Format
-{
-    "status": "error",
-    "error": {
-        "code": "VALIDATION_ERROR",
-        "message": "Invalid signal data",
-        "details": {
-            "field": "confidence",
-            "issue": "Must be between 1 and 10"
-        }
-    },
-    "meta": {
-        "timestamp": "2024-01-01T10:00:00Z",
-        "request_id": "req_123"
-    }
-}
-```
-
 ## 🔒 Security
 
 ### Security Architecture
@@ -592,14 +523,14 @@ class NotFoundError(APIError):
 ### Security Measures
 
 1. **API Key Management**
-   - Encrypted storage
-   - Regular rotation
+   - Encrypted storage in credentials files
+   - Environment variable support
    - Access logging
 
 2. **Rate Limiting**
-   - Per-API limits
-   - Per-user limits
+   - Per-API limits implemented
    - Time-based throttling
+   - Request queuing
 
 3. **Input Validation**
    - Data sanitization
@@ -607,9 +538,9 @@ class NotFoundError(APIError):
    - Length limits
 
 4. **Access Control**
-   - Authentication
-   - Authorization
-   - Session management
+   - File-based configuration
+   - Environment-based secrets
+   - Secure credential storage
 
 ## ⚡ Performance
 
@@ -623,8 +554,8 @@ class NotFoundError(APIError):
 │  │ Caching     │  │ Async       │  │ Batch       │        │
 │  │             │  │ Processing  │  │ Processing  │        │
 │  │ • Memory    │  │             │  │             │        │
-│  │ • Redis     │  │ • Threads   │  │ • Groups    │        │
-│  │ • Files     │  │ • Coroutines│  │ • Batches   │        │
+│  │ • Files     │  │ • Threads   │  │ • Groups    │        │
+│  │ • Database  │  │ • Coroutines│  │ • Batches   │        │
 │  └─────────────┘  └─────────────┘  └─────────────┘        │
 │                                                             │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
@@ -647,19 +578,12 @@ class NotFoundError(APIError):
        
        def __init__(self):
            self.memory_cache = {}
-           self.redis_cache = Redis()
            self.file_cache = FileCache()
        
        def get(self, key: str) -> Any:
            # Check memory first
            if key in self.memory_cache:
                return self.memory_cache[key]
-           
-           # Check Redis
-           value = self.redis_cache.get(key)
-           if value:
-               self.memory_cache[key] = value
-               return value
            
            # Check file cache
            value = self.file_cache.get(key)
@@ -670,38 +594,28 @@ class NotFoundError(APIError):
            return None
    ```
 
-2. **Async Processing**
+2. **Batch Processing**
    ```python
-   import asyncio
-   from concurrent.futures import ThreadPoolExecutor
-   
-   class AsyncProcessor:
-       """Async news processing."""
+   class BatchProcessor:
+       """Batch processing for efficiency."""
        
-       def __init__(self):
-           self.executor = ThreadPoolExecutor(max_workers=4)
+       def __init__(self, batch_size: int = 10):
+           self.batch_size = batch_size
+           self.queue = []
        
-       async def process_news_batch(self, news_items: List[Dict]) -> List[Dict]:
-           """Process news items asynchronously."""
-           tasks = []
-           for item in news_items:
-               task = asyncio.create_task(self._process_item(item))
-               tasks.append(task)
+       def add_item(self, item: Any) -> None:
+           """Add item to batch queue."""
+           self.queue.append(item)
            
-           results = await asyncio.gather(*tasks)
-           return results
+           if len(self.queue) >= self.batch_size:
+               self.process_batch()
        
-       async def _process_item(self, item: Dict) -> Dict:
-           """Process single news item."""
-           # AI analysis in thread pool
-           loop = asyncio.get_event_loop()
-           analysis = await loop.run_in_executor(
-               self.executor, 
-               self._analyze_with_ai, 
-               item
-           )
-           
-           return {**item, 'analysis': analysis}
+       def process_batch(self) -> None:
+           """Process current batch."""
+           if self.queue:
+               # Process all items in batch
+               self._process_items(self.queue)
+               self.queue.clear()
    ```
 
 3. **Database Optimization**
@@ -711,11 +625,6 @@ class NotFoundError(APIError):
    CREATE INDEX idx_news_source ON news_items(source);
    CREATE INDEX idx_signals_confidence ON signals(confidence);
    CREATE INDEX idx_trades_symbol ON trades(symbol);
-   
-   -- Partitioning for large tables
-   CREATE TABLE news_items_2024 (
-       CHECK (timestamp >= '2024-01-01' AND timestamp < '2025-01-01')
-   ) INHERITS (news_items);
    ```
 
 ## 📈 Scalability
@@ -723,24 +632,24 @@ class NotFoundError(APIError):
 ### Scalability Patterns
 
 1. **Horizontal Scaling**
-   - Multiple instances
-   - Load balancing
-   - Database sharding
+   - Multiple instances support
+   - Database sharding ready
+   - Load balancing compatible
 
 2. **Vertical Scaling**
    - Resource optimization
    - Memory management
    - CPU utilization
 
-3. **Microservices Architecture**
+3. **Modular Architecture**
    ```python
    # Service decomposition
    services = {
-       'news-ingestion': NewsIngestionService(),
-       'signal-generation': SignalGenerationService(),
-       'risk-management': RiskManagementService(),
-       'notification': NotificationService(),
-       'analytics': AnalyticsService()
+       'news-ingestion': NewsIngestionOrchestrator(),
+       'signal-generation': NewsSignalOrchestrator(),
+       'risk-management': PositionSizer(),
+       'notification': AlertBatcher(),
+       'analytics': PerformanceTracker()
    }
    ```
 
@@ -771,25 +680,40 @@ class NotFoundError(APIError):
 ┌─────────────────────────────────────────────────────────────┐
 │                    Production Environment                   │
 │                                                             │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │ Load        │  │ Application │  │ Database    │        │
-│  │ Balancer    │  │ Instances   │  │ Cluster     │        │
-│  │             │  │             │  │             │        │
-│  │ • Nginx     │  │ • Instance1 │  │ • Primary   │        │
-│  │ • HAProxy   │  │ • Instance2 │  │ • Replicas  │        │
-│  │ • Cloud LB  │  │ • Instance3 │  │ • Backup    │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
+│  ┌─────────────┐  ┌─────────────────┐  ┌─────────────────┐│
+│  │ Application │  │ Database        │  │ Monitoring      ││
+│  │ Instance    │  │                 │  │ & Logging       ││
+│  │             │  │                 │  │                 ││
+│  │ • MarketMan │  │ • SQLite        │  │ • System        ││
+│  │ • CLI       │  │ • JSON Files    │  │   Monitoring    ││
+│  │ • Cron Jobs │  │ • Memory Cache  │  │ • Alerts        ││
+│  └─────────────┘  └─────────────────┘  └─────────────────┘│
 │                                                             │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │ Cache       │  │ Monitoring  │  │ Backup      │        │
-│  │ Layer       │  │ & Logging   │  │ & Recovery  │        │
-│  │             │  │             │  │             │        │
-│  │ • Redis     │  │ • Prometheus│  │ • Automated │        │
-│  │ • Memcached │  │ • Grafana   │  │ • Manual    │        │
-│  │ • CDN       │  │ • ELK Stack │  │ • Testing   │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
+│  ┌─────────────┐  ┌─────────────────┐  ┌─────────────────┐│
+│  │ External    │  │ Configuration   │  │ Backup          ││
+│  │ Services    │  │                 │  │ & Recovery      ││
+│  │             │  │                 │  │                 ││
+│  │ • APIs      │  │ • YAML Files    │  │ • Automated     ││
+│  │ • Notions   │  │ • Environment   │  │ • Manual        ││
+│  │ • Pushover  │  │   Variables     │  │ • Testing       ││
+│  └─────────────┘  └─────────────────┘  └─────────────────┘│
 └─────────────────────────────────────────────────────────────┘
 ```
+
+## 🚫 Not Implemented
+
+The following features mentioned in previous documentation are **NOT YET IMPLEMENTED**:
+
+1. **RESTful API** - No web API endpoints
+2. **Backtesting Engine** - Empty module, no implementation
+3. **Advanced Authentication** - No user authentication system
+4. **Redis Caching** - Only file and memory caching implemented
+5. **Microservices Architecture** - Monolithic design
+6. **Load Balancing** - Single instance only
+7. **Advanced Database Features** - No partitioning or sharding
+8. **Web Dashboard** - CLI-only interface
+9. **Real-time Trading** - Paper trading only
+10. **Advanced Risk Models** - Basic Kelly Criterion only
 
 ---
 
