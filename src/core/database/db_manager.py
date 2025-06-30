@@ -186,7 +186,7 @@ class MarketMemoryDB(DatabaseManager):
     Handles all market signal and pattern storage operations.
     """
 
-    def __init__(self, db_path: str = "marketman_memory.db"):
+    def __init__(self, db_path: str = "data/marketman_memory.db"):
         """Initialize the market memory database."""
         import sqlite3
         if db_path == ':memory:':
@@ -591,7 +591,7 @@ class AlertBatchDB(DatabaseManager):
     Handles all alert storage and batching operations.
     """
 
-    def __init__(self, db_path: str = "alert_batch.db"):
+    def __init__(self, db_path: str = "data/alert_batch.db"):
         """Initialize the alert batch database."""
         super().__init__(db_path)
 
@@ -895,5 +895,5 @@ class AlertBatchDB(DatabaseManager):
 
 
 # Global database instances
-market_memory_db = MarketMemoryDB()
-alert_batch_db = AlertBatchDB()
+market_memory_db = MarketMemoryDB("data/marketman_memory.db")
+alert_batch_db = AlertBatchDB("data/alert_batch.db")

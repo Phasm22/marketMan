@@ -82,7 +82,7 @@ risk_management:
     kelly_criterion_enabled: true
     max_kelly_fraction: 0.25
     min_position_size: 100
-    max_position_size: 10000
+    max_position_size: 2500  # Reduced from 10000 to align with 25k account
   
   stop_loss:
     trailing_stop_enabled: true

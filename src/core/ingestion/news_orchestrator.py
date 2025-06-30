@@ -20,7 +20,7 @@ from ..signals.etf_signal_engine import analyze_news_batch
 from ..signals.pattern_recognizer import create_pattern_recognizer
 
 # Import Phase 4 Notion integration
-from src.integrations.notion_phase4 import Phase4NotionIntegration
+from src.integrations.notion_journal import NotionJournalIntegration
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +39,8 @@ class NewsIngestionOrchestrator:
         self.source_manager = NewsSourceManager(self.news_sources)
         self.pattern_recognizer = create_pattern_recognizer(config)
         
-        # Initialize Phase 4 Notion integration
-        self.notion_phase4 = Phase4NotionIntegration()
+        # Initialize Notion journal integration
+        self.notion_journal = NotionJournalIntegration()
         
         # Cost tracking
         self.daily_ai_calls = 0
@@ -253,8 +253,8 @@ class NewsIngestionOrchestrator:
                 analysis_result["technicals_fetched"] = len(technicals)
                 analysis_result["patterns_detected"] = pattern_results.get("patterns_detected", 0)
                 
-                # Log signal to Phase 4 Notion database
-                self._log_signal_to_notion_phase4(analysis_result, batch)
+                # Log signal to Notion journal
+                self._log_signal_to_notion_journal(analysis_result, batch)
                 
                 logger.info(f"✅ Batch {batch.batch_id} analyzed successfully: {analysis_result.get('signal', 'Unknown')} signal")
                 return analysis_result
@@ -321,29 +321,30 @@ class NewsIngestionOrchestrator:
         
         return cycle_results
 
-    def _log_signal_to_notion_phase4(self, analysis_result: Dict, batch: NewsBatch):
-        """Log signal to Phase 4 Notion database"""
+    def _log_signal_to_notion_journal(self, analysis_result: Dict, batch: NewsBatch):
+        """Log signal analysis to Notion journal database"""
+        if not self.notion_journal:
+            return
+        
         try:
-            # Format signal data for Phase 4 Notion integration
             signal_data = {
-                "title": f"Signal: {analysis_result.get('signal', 'Unknown')} - {analysis_result.get('primary_sector', 'Mixed')}",
+                "title": f"Batch Analysis: {batch.get_summary()}",
                 "signal": analysis_result.get("signal", "Neutral"),
                 "confidence": analysis_result.get("confidence", 5.0),
                 "etfs": analysis_result.get("affected_etfs", []),
-                "sector": analysis_result.get("primary_sector", "Mixed"),
+                "sector": analysis_result.get("sector", "Mixed"),
                 "reasoning": analysis_result.get("reasoning", ""),
-                "timestamp": analysis_result.get("processed_at", datetime.now().isoformat()),
-                "journal_notes": f"Batch: {batch.batch_id}, Items: {batch.batch_size}, Sources: {len(set(item.source for item in batch.items))}"
+                "journal_notes": f"Batch ID: {batch.batch_id}, Quality: {batch.batch_quality_score:.2f}"
             }
             
-            success = self.notion_phase4.log_signal(signal_data)
+            success = self.notion_journal.log_signal(signal_data)
             if success:
-                logger.info(f"✅ Signal logged to Phase 4 Notion: {signal_data['title']}")
+                logger.debug("💾 Signal logged to Notion journal")
             else:
-                logger.warning(f"⚠️ Failed to log signal to Phase 4 Notion")
+                logger.warning("⚠️ Failed to log signal to Notion journal")
                 
         except Exception as e:
-            logger.error(f"❌ Error logging signal to Phase 4 Notion: {e}")
+            logger.warning(f"⚠️ Error logging to Notion journal: {e}")
 
 
 def create_news_orchestrator(config: Dict) -> NewsIngestionOrchestrator:

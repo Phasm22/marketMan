@@ -231,41 +231,35 @@ def analyze_thematic_etf_news(
                 # Fallback: try to parse the whole thing
                 json_result = json.loads(result)
             
-            # Apply hard rules to batch analysis
-            if not _validate_batch_analysis(json_result):
-                logger.info(f"🚫 Batch analysis failed validation: {news_batch.batch_id}")
+            # Apply hard rules to individual analysis
+            if not _validate_individual_analysis(json_result):
+                logger.info(f"🚫 Individual analysis failed validation")
                 return None
             
-            # Add metadata
-            json_result["batch_id"] = news_batch.batch_id
-            json_result["batch_size"] = news_batch.batch_size
-            json_result["common_tickers"] = news_batch.common_tickers
-            json_result["common_keywords"] = news_batch.common_keywords
+            # Add metadata for individual article analysis
             json_result["analysis_timestamp"] = datetime.now().isoformat()
-            json_result["source_headlines"] = [item.title for item in news_batch.items]
-            json_result["technicals_included"] = len(technicals) if technicals else 0
-            json_result["patterns_detected"] = pattern_results.get("patterns_detected", 0) if pattern_results else 0
-            json_result["patterns"] = pattern_results.get("patterns", []) if pattern_results else []
+            json_result["source_headline"] = headline
+            json_result["source_summary"] = summary
             
             # Store in memory if available
             if memory:
                 try:
-                    memory.store_signal(json_result, f"Batch: {news_batch.batch_id}")
-                    logger.debug("💾 Batch analysis stored in MarketMemory")
+                    memory.store_signal(json_result, f"Article: {headline[:50]}...")
+                    logger.debug("💾 Individual analysis stored in MarketMemory")
                 except Exception as mem_error:
-                    logger.warning(f"⚠️ Failed to store batch analysis in memory: {mem_error}")
+                    logger.warning(f"⚠️ Failed to store individual analysis in memory: {mem_error}")
             
-            logger.info(f"✅ Batch analysis complete: {json_result.get('signal', 'Unknown')} signal, confidence {json_result.get('confidence', 0)}")
+            logger.info(f"✅ Individual analysis complete: {json_result.get('signal', 'Unknown')} signal, confidence {json_result.get('confidence', 0)}")
             return json_result
             
         except json.JSONDecodeError as e:
-            logger.error(f"❌ Failed to parse batch analysis response as JSON: {e}")
+            logger.error(f"❌ Failed to parse individual analysis response as JSON: {e}")
             if DEBUG_MODE:
                 logger.error(f"Raw response: {result}")
             return None
             
     except Exception as e:
-        logger.error(f"❌ Error calling OpenAI API for batch analysis: {e}")
+        logger.error(f"❌ Error calling OpenAI API for individual analysis: {e}")
         return None
 
 
@@ -404,7 +398,10 @@ def analyze_news_batch(news_batch, etf_prices=None, contextual_insight=None, mem
             return None
             
     except Exception as e:
-        logger.error(f"❌ Error calling OpenAI API for batch analysis: {e}")
+        if news_batch is not None and hasattr(news_batch, 'batch_id'):
+            logger.error(f"❌ Error calling OpenAI API for batch analysis (batch_id={news_batch.batch_id}): {e}")
+        else:
+            logger.error(f"❌ Error calling OpenAI API for batch analysis: {e}")
         return None
 
 
@@ -586,6 +583,53 @@ def _validate_batch_analysis(analysis_result):
         source_assessment = analysis_result.get("source_quality_assessment", "").lower()
         if "unreliable" in source_assessment or "contradictory" in source_assessment:
             logger.debug(f"Source quality assessment indicates unreliable sources")
+            return False
+    
+    return True
+
+
+def _validate_individual_analysis(analysis_result):
+    """Validate individual analysis results against hard rules with quality considerations"""
+    # Check confidence threshold
+    if analysis_result.get("confidence", 0) < 7:  # Restored from 3
+        logger.debug(f"Individual confidence below threshold: {analysis_result.get('confidence')}")
+        return False
+    
+    # Check signal type
+    signal = analysis_result.get("signal", "").lower()
+    if signal not in ["bullish", "bearish"]:
+        logger.debug(f"Individual signal not actionable: {signal}")
+        return False
+    
+    # Check for specialized ETFs
+    specialized_etfs = [
+        "BOTZ", "ITA", "ICLN", "URA", "XAR", "DFEN", "PPA", "ROBO", "IRBO", "ARKQ",
+        "SMH", "SOXX", "TAN", "QCLN", "PBW", "LIT", "REMX", "URNM", "NLR", "VIXY",
+        "VXX", "SQQQ", "SPXS"
+    ]
+    
+    affected_etfs = analysis_result.get("affected_etfs", [])
+    if not any(etf in specialized_etfs for etf in affected_etfs):
+        logger.debug("Individual analysis contains no specialized ETFs")
+        return False
+    
+    # Additional quality checks (if individual metadata is available)
+    if "analysis_timestamp" in analysis_result:
+        analysis_age = (datetime.now() - datetime.fromisoformat(analysis_result["analysis_timestamp"])).days
+        if analysis_age > 30:  # Very old analysis
+            logger.debug(f"Individual analysis is older than 30 days: {analysis_age} days")
+            return False
+    
+    if "source_headline" in analysis_result:
+        headline_length = len(analysis_result["source_headline"])
+        if headline_length < 10 or headline_length > 200:  # Very short or very long headline
+            logger.debug(f"Individual headline length out of range: {headline_length} characters")
+            return False
+    
+    if "source_summary" in analysis_result:
+        summary_length = len(analysis_result["source_summary"])
+        if summary_length < 10 or summary_length > 500:  # Very short or very long summary
+            logger.debug(f"Individual summary length out of range: {summary_length} characters")
             return False
     
     return True

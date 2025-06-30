@@ -114,7 +114,7 @@ def cmd_test_batch(args):
 
 def cmd_config(args):
     """Show current batching configuration"""
-    from src.core.news_gpt_analyzer import CURRENT_BATCH_STRATEGY, ALERT_STRATEGY
+    from src.core.signals.news_gpt_analyzer import CURRENT_BATCH_STRATEGY, ALERT_STRATEGY
     
     print("⚙️  Alert Batching Configuration")
     print("="*40)

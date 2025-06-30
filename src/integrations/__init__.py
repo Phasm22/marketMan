@@ -14,7 +14,7 @@ from .pushover_client import PushoverNotifier, pushover_notifier, send_trading_s
 from .fidelity_integration import FidelityIntegration, FidelityTrade, create_fidelity_integration, auto_import_fidelity_trades, setup_fidelity_email_monitoring
 
 # Phase 4 components
-from .notion_phase4 import Phase4NotionIntegration, notion_phase4
+from .notion_journal import NotionJournalIntegration, notion_journal
 
 __all__ = [
     # Existing components
@@ -39,6 +39,6 @@ __all__ = [
     "setup_fidelity_email_monitoring",
     
     # Phase 4 components
-    "Phase4NotionIntegration",
-    "notion_phase4"
+    "NotionJournalIntegration",
+    "notion_journal"
 ]

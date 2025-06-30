@@ -6,7 +6,7 @@ paper_trading:
   enabled: true
   name: "Paper Trading"
   account_type: "paper"
-  initial_balance: 100000
+  initial_balance: 25000
   commission_per_trade: 0.0
   margin_enabled: false
 
@@ -95,14 +95,14 @@ robinhood:
 # Global Broker Settings
 global_settings:
   # Risk Management
-  max_position_size: 10000
-  max_daily_trades: 50
-  max_daily_loss: 1000
+  max_position_size: 2500
+  max_daily_trades: 20
+  max_daily_loss: 500
   
   # Order Management
   default_quantity: 100
   min_order_size: 1
-  max_order_size: 10000
+  max_order_size: 2500
   
   # Market Hours (EST)
   market_open: "09:30"

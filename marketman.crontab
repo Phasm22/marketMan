@@ -1,0 +1,33 @@
+# MarketMan Automated Trading System - Updated Crontab
+# =====================================================
+
+# News signal processing (every 15 minutes)
+*/15 * * * * cd /root/marketMan && source /root/marketMan/venv/bin/activate && python -m src.cli.main signals run >> /var/log/marketman.log 2>&1
+
+# Alert processing (every 10 minutes)
+*/10 * * * * cd /root/marketMan && source /root/marketMan/venv/bin/activate && python -m src.cli.main alerts check >> /var/log/marketman.log 2>&1
+
+# News ingestion cycle (every 30 minutes)
+*/30 * * * * cd /root/marketMan && source /root/marketMan/venv/bin/activate && python -m src.cli.main news cycle >> /var/log/marketman.log 2>&1
+
+# Performance monitoring (daily at 7 AM)
+0 7 * * * cd /root/marketMan && source /root/marketMan/venv/bin/activate && python -m src.cli.main performance show >> /var/log/marketman.log 2>&1
+
+# Configuration validation (daily at 8 AM)
+0 8 * * * cd /root/marketMan && source /root/marketMan/venv/bin/activate && python -m src.cli.main config validate >> /var/log/marketman.log 2>&1
+
+# Daily status report (daily at 6 PM)
+0 18 * * * cd /root/marketMan && source /root/marketMan/venv/bin/activate && python -m src.cli.main news status >> /var/log/marketman.log 2>&1
+
+# Weekly performance report (Sundays at 6 AM)
+0 6 * * 0 cd /root/marketMan && source /root/marketMan/venv/bin/activate && python -m src.cli.main journal performance >> /var/log/marketman.log 2>&1
+
+# Weekly signal analysis (Sundays at 7 AM)
+0 7 * * 0 cd /root/marketMan && source /root/marketMan/venv/bin/activate && python -m src.cli.main journal signals >> /var/log/marketman.log 2>&1
+
+# Log rotation (Sundays at 3 AM)
+0 3 * * 0 /usr/sbin/logrotate -f /etc/logrotate.d/marketman
+
+# Startup tasks
+@reboot cd /root/marketMan && source /root/marketMan/venv/bin/activate && python -m src.cli.main config validate
+@reboot cd /root/marketMan && source /root/marketMan/venv/bin/activate && python -m src.cli.main news status 

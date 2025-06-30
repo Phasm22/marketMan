@@ -133,6 +133,12 @@ Examples:
     journal_parser.add_argument("--email", "-e", help="Email for Fidelity setup")
     journal_parser.add_argument("--password", help="Password for Fidelity setup")
 
+    # Config command
+    config_parser = subparsers.add_parser("config", help="Configuration management commands")
+    config_parser.add_argument(
+        "action", choices=["validate", "show", "reload"], help="Configuration action to perform"
+    )
+
     return parser
 
 
@@ -687,6 +693,70 @@ def handle_journal(args: argparse.Namespace) -> int:
         return 1
 
 
+def handle_config(args: argparse.Namespace) -> int:
+    """
+    Handle config command.
+
+    Args:
+        args: Parsed arguments
+
+    Returns:
+        Exit code
+    """
+    try:
+        if args.action == "validate":
+            print("🔍 Validating configuration...")
+            # Import and run the validation script
+            import subprocess
+            result = subprocess.run([sys.executable, "scripts/validate_config.py"], 
+                                  capture_output=True, text=True)
+            print(result.stdout)
+            if result.stderr:
+                print("Errors:", result.stderr)
+            return result.returncode
+            
+        elif args.action == "show":
+            print("📋 Current Configuration Summary")
+            print("=" * 40)
+            
+            config_loader = get_config()
+            config = config_loader.load_settings()
+            
+            # Show key settings
+            risk_config = config.get('risk', {})
+            print(f"Risk Management:")
+            print(f"  • Max Daily Loss: {risk_config.get('max_daily_loss_percent', 'N/A')}%")
+            print(f"  • Max Position Size: {risk_config.get('max_position_size_percent', 'N/A')}%")
+            print(f"  • Kelly Fraction: {risk_config.get('max_kelly_fraction', 'N/A')}")
+            
+            api_config = config.get('api_limits', {})
+            print(f"\nAPI Limits:")
+            print(f"  • OpenAI Requests/Day: {api_config.get('openai', {}).get('max_requests_per_day', 'N/A')}")
+            print(f"  • Finnhub Calls/Day: {api_config.get('finnhub', {}).get('calls_per_day', 'N/A')}")
+            
+            alert_config = config.get('alerts', {})
+            print(f"\nAlerts:")
+            print(f"  • Max Daily Alerts: {alert_config.get('max_daily_alerts', 'N/A')}")
+            print(f"  • Batch Strategy: {alert_config.get('batch_strategy', 'N/A')}")
+            
+            return 0
+            
+        elif args.action == "reload":
+            print("🔄 Reloading configuration...")
+            config_loader = get_config()
+            config_loader.reload_configs()
+            print("✅ Configuration reloaded successfully")
+            return 0
+            
+        else:
+            print(f"Unknown action: {args.action}")
+            return 1
+            
+    except Exception as e:
+        logging.error(f"Error in config command: {e}")
+        return 1
+
+
 def main() -> int:
     """
     Main CLI entry point.
@@ -719,6 +789,8 @@ def main() -> int:
             return handle_news(args)
         elif args.command == "journal":
             return handle_journal(args)
+        elif args.command == "config":
+            return handle_config(args)
         else:
             print(f"Unknown command: {args.command}")
             return 1

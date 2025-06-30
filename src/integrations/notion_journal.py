@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-Phase 4 Notion Integration - Streamlined
+Notion Journal Integration - Trade and Signal Management
 
-This module provides streamlined Notion integration for Phase 4,
-focusing on essential trade and signal data only.
-Removes AI metadata and focuses on manual journaling capabilities.
+This module provides Notion integration for trade journaling and signal management,
+focusing on manual trade tracking and signal review capabilities.
 """
 
 import os
@@ -19,8 +18,8 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-class Phase4NotionIntegration:
-    """Streamlined Notion integration for Phase 4"""
+class NotionJournalIntegration:
+    """Notion integration for trade journaling and signal management"""
     
     def __init__(self):
         self.notion_token = os.getenv("NOTION_TOKEN")
@@ -442,4 +441,4 @@ class Phase4NotionIntegration:
             return False
 
 # Global instance for easy access
-notion_phase4 = Phase4NotionIntegration() 
+notion_journal = NotionJournalIntegration() 

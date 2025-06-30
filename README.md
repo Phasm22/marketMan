@@ -1,235 +1,101 @@
 # MarketMan Trading System
 
-A sophisticated, modular trading system that combines real-time news analysis, AI-powered signal generation, and technical analysis to provide actionable trading insights.
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-## 🚀 Features
+A sophisticated, AI-powered trading system that combines real-time news analysis, sentiment detection, and technical analysis to generate actionable trading signals for ETFs and options.
 
-### Core Capabilities
-- **Multi-Source News Ingestion**: Real-time news from Finnhub, NewsAPI, and NewData
-- **AI-Powered Analysis**: GPT-4 integration for sentiment analysis and signal generation
-- **Technical Analysis**: Technical indicators and pattern recognition
-- **Risk Management**: Position sizing and risk controls
-- **Database Integration**: Persistent storage with SQLite
-- **Modular Architecture**: Clean, maintainable codebase
+## 🚀 Quick Start
 
-### Advanced Features
-- **Smart Filtering**: Keyword-based news filtering with exclusion lists
-- **Batch Processing**: Efficient batch processing with quality scoring
-- **Rate Limiting**: API rate limiting and cost controls
-- **Multi-Source Validation**: Cross-reference news from multiple sources
-- **Real-time Pipeline**: Streaming news processing pipeline
-- **Performance Monitoring**: Built-in performance and scalability tests
+### Prerequisites
+- Python 3.9+
+- API keys for OpenAI, Finnhub, NewsAPI, and NewData
+- Pushover account (optional, for notifications)
 
-## 📁 Project Structure
+### Installation
+```bash
+# Clone and setup
+git clone <repository-url>
+cd marketMan
+pip install -r requirements.txt
 
-```
-marketMan/
-├── src/
-│   ├── core/
-│   │   ├── signals/           # Signal generation and analysis
-│   │   ├── ingestion/         # Data ingestion modules
-│   │   ├── database/          # Database management
-│   │   ├── risk/              # Risk management
-│   │   ├── backtest/          # Backtesting engine
-│   │   ├── journal/           # Trading journal
-│   │   ├── options/           # Options trading
-│   │   ├── technicals/        # Technical indicators
-│   │   └── utils/             # Shared utilities
-│   ├── integrations/          # External integrations
-│   ├── cli/                   # Command-line interface
-│   └── config/                # Configuration files
-├── tests/                     # Comprehensive test suite
-├── config/                    # Configuration files
-└── docs/                      # Documentation
+# Configure environment
+cp .env.example .env
+# Edit .env with your API keys
+
+# Install pre-commit hooks
+pre-commit install
 ```
 
-## 🛠️ Installation
+### First Run
+```bash
+# Validate configuration
+python marketman config validate
 
-1. **Clone the repository**:
-   ```bash
-   git clone <repository-url>
-   cd marketMan
-   ```
+# Run news processing cycle
+python marketman news cycle
 
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+# Check system status
+python marketman status
+```
 
-3. **Set up environment variables**:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your API keys
-   ```
+## 📚 Documentation
 
-4. **Install pre-commit hooks**:
-   ```bash
-   pre-commit install
-   ```
+- **[User Guide](docs/user-guide.md)** - Complete usage instructions
+- **[API Reference](docs/api-reference.md)** - Technical API documentation
+- **[Configuration Guide](docs/configuration.md)** - Setup and configuration
+- **[Development Guide](docs/development.md)** - Contributing and development
+- **[Architecture](docs/architecture.md)** - System design and components
 
-## ⚙️ Configuration
+## 🎯 Key Features
 
-### API Keys Required
-- **OpenAI API Key**: For AI analysis and signal generation
-- **Finnhub API Key**: For financial news and market data
-- **NewsAPI Key**: For general news coverage
-- **NewData API Key**: For additional news sources
+- **Multi-Source News Analysis** - Real-time news from 3+ sources
+- **AI-Powered Signal Generation** - GPT-4 sentiment analysis
+- **Risk Management** - Position sizing and stop-loss controls
+- **Technical Analysis** - Pattern recognition and indicators
+- **Smart Notifications** - Configurable alerts via Pushover
+- **Performance Tracking** - Comprehensive trade journaling
+- **Modular Architecture** - Clean, maintainable codebase
 
-### Configuration Files
-- `config/settings.yaml`: General system settings
-- `config/strategies.yaml`: Trading strategy configurations
-- `config/brokers.yaml`: Broker integration settings
-
-## 🚀 Usage
-
-### Command Line Interface
-
-The system provides a comprehensive CLI for all operations:
+## 🛠️ Core Commands
 
 ```bash
-# Run news ingestion cycle
-python -m src.cli.main ingest
+# News and signals
+python marketman news cycle          # Process news and generate signals
+python marketman signals run         # Run signal analysis
+python marketman alerts check        # Check for new alerts
 
-# Generate trading signals
-python -m src.cli.main signals
+# System management
+python marketman status              # System status and health
+python marketman config validate     # Validate configuration
+python marketman performance show    # Performance dashboard
 
-# Run backtesting
-python -m src.cli.main backtest
-
-# View system status
-python -m src.cli.main status
-
-# Get help
-python -m src.cli.main --help
+# Development
+python marketman test                # Run test suite
+python marketman lint                # Code quality checks
 ```
 
-### Programmatic Usage
+## 📊 System Status
 
-```python
-from src.core.ingestion.news_ingestion_orchestrator import NewsIngestionOrchestrator
-from src.core.signals.news_signal_orchestrator import NewsSignalOrchestrator
-
-# Initialize orchestrators
-ingestion_orchestrator = NewsIngestionOrchestrator()
-signal_orchestrator = NewsSignalOrchestrator()
-
-# Run news ingestion
-news_items = ingestion_orchestrator.run_ingestion_cycle()
-
-# Generate signals
-signals = signal_orchestrator.generate_signals(news_items)
-```
-
-## 🧪 Testing
-
-### Run All Tests
-```bash
-pytest tests/
-```
-
-### Run Specific Test Categories
-```bash
-# Integration tests
-pytest tests/test_integration.py
-
-# Performance tests
-pytest tests/test_performance.py
-
-# Unit tests
-pytest tests/test_unit/
-```
-
-### Test Coverage
-```bash
-pytest --cov=src tests/
-```
-
-## 📊 Performance
-
-The system is designed for high performance and scalability:
-
-- **News Processing**: Handles 500+ news items in under 30 seconds
-- **AI Analysis**: Batch processing with rate limiting and cost controls
-- **Memory Efficiency**: Optimized memory usage for large datasets
-- **Concurrent Processing**: Thread-safe operations for high throughput
-
-## 🔧 Development
-
-### Code Quality
-- **Black**: Code formatting
-- **Flake8**: Linting
-- **isort**: Import sorting
-- **pre-commit**: Automated quality checks
-
-### Running Quality Checks
-```bash
-# Format code
-black src/ tests/
-
-# Lint code
-flake8 src/ tests/
-
-# Sort imports
-isort src/ tests/
-
-# Run all checks
-pre-commit run --all-files
-```
-
-## 📈 Architecture Overview
-
-### News Ingestion Pipeline
-1. **Multi-Source Collection**: Fetch news from Finnhub, NewsAPI, and NewData
-2. **Smart Filtering**: Filter by keywords and exclude unwanted content
-3. **Batch Processing**: Group news items for efficient processing
-4. **Quality Scoring**: Score news items based on relevance and source quality
-5. **Database Storage**: Store processed news items
-
-### Signal Generation Pipeline
-1. **AI Analysis**: GPT-4 powered sentiment and signal analysis
-2. **Technical Analysis**: Technical indicators and pattern recognition
-3. **Multi-Source Validation**: Cross-reference signals across sources
-4. **Risk Assessment**: Apply risk management rules
-5. **Signal Output**: Generate actionable trading signals
+- **Phase 3**: ✅ Core implementation complete
+- **Phase 4**: 🔄 Advanced integrations (Notion, enhanced alerts)
+- **Phase 5**: 📋 Production deployment (planned)
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
+See [Development Guide](docs/development.md) for contribution guidelines.
 
-## 📝 License
+## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🆘 Support
 
-For support and questions:
-- Create an issue in the repository
-- Check the documentation in the `docs/` folder
-- Review the test examples for usage patterns
+- 📖 [Documentation](docs/)
+- 🐛 [Issues](https://github.com/your-repo/issues)
+- 💬 [Discussions](https://github.com/your-repo/discussions)
 
-## 🔄 Roadmap
+---
 
-### Phase 3: Core Implementation ✅
-- [x] Multi-source news ingestion
-- [x] AI-powered signal generation
-- [x] Technical analysis integration
-- [x] Performance optimization
-- [x] Comprehensive testing
-
-### Phase 4: Advanced Features (Next)
-- [ ] Real-time streaming data
-- [ ] Advanced backtesting engine
-- [ ] Machine learning models
-- [ ] Web dashboard
-- [ ] Mobile notifications
-
-### Phase 5: Production Deployment
-- [ ] Docker containerization
-- [ ] Cloud deployment
-- [ ] Monitoring and alerting
-- [ ] Performance analytics
-- [ ] User management system
+**⚠️ Disclaimer**: This is experimental software for educational purposes. Use at your own risk. Not financial advice.
