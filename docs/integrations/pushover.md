@@ -47,8 +47,8 @@ Edit `config/settings.yaml`:
 integrations:
   pushover:
     enabled: true
-    api_token: "your_api_token_here"
-    user_token: "your_user_key_here"
+    api_token: "akjhp6gm868mieuixabjum98tbbq29"
+    user_token: "ur914z6b94u72hk8nxc3qo13ift4aw"
     confidence_threshold: 7
     risk_warnings_enabled: true
     rate_limit_per_hour: 10

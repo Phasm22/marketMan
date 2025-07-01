@@ -19,13 +19,13 @@ etf_signals:
     macd_fast: 12
     macd_slow: 26
     macd_signal: 9
-    sma_short: 20
-    sma_long: 50
+    sma_short: 15
+    sma_long: 40
   
   signal_filters:
-    min_volume: 1000000
+    min_volume: 500000
     min_price: 10.0
-    max_volatility: 0.05
+    max_volatility: 0.2
 
 # News Analysis Strategy
 news_analysis:
@@ -33,8 +33,8 @@ news_analysis:
   enabled: true
   
   keywords:
-    positive: ["bullish", "rally", "surge", "gain", "positive", "growth"]
-    negative: ["bearish", "decline", "drop", "loss", "negative", "recession"]
+    positive: ["bullish", "rally", "surge", "gain", "positive", "growth", "up", "beat", "record", "strong", "momentum"]
+    negative: ["bearish", "decline", "drop", "loss", "negative", "recession", "downgrade", "slowdown", "weak", "miss"]
     neutral: ["stable", "steady", "unchanged", "flat"]
   
   sentiment_weights:
@@ -69,7 +69,7 @@ options_scalping:
     theta_decay_threshold: 0.1
   
   position_sizing:
-    max_capital_per_trade: 1000
+    max_capital_per_trade: 200
     max_portfolio_risk: 0.02  # 2%
     max_correlation: 0.7
 
@@ -81,8 +81,8 @@ risk_management:
   position_sizing:
     kelly_criterion_enabled: true
     max_kelly_fraction: 0.25
-    min_position_size: 100
-    max_position_size: 2500  # Reduced from 10000 to align with 25k account
+    min_position_size: 50
+    max_position_size: 200 
   
   stop_loss:
     trailing_stop_enabled: true
@@ -91,6 +91,6 @@ risk_management:
   
   portfolio_limits:
     max_sector_exposure: 0.3
-    max_single_position: 0.1
+    max_single_position: 0.05
     max_correlation: 0.8
-    min_diversification: 5 
+    min_diversification: 2

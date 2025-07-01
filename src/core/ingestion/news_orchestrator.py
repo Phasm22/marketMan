@@ -112,12 +112,18 @@ class NewsIngestionOrchestrator:
         # Step 4: Process batches with AI (if within budget)
         ai_results = self._process_batches_with_ai(news_batches)
         
+        # Step 5: Finalize and process any remaining pending batches
+        pending_batches = self.news_batcher.finalize_all_pending_batches()
+        if pending_batches:
+            logger.info(f"📦 Processing {len(pending_batches)} finalized pending batches at end of cycle")
+            ai_results += self._process_batches_with_ai(pending_batches)
+        
         # Compile results
         results = {
             "timestamp": datetime.now().isoformat(),
             "raw_news_count": len(raw_news),
             "filtered_news_count": len(filtered_news),
-            "batches_created": len(news_batches),
+            "batches_created": len(news_batches) + len(pending_batches),
             "ai_processed_batches": len(ai_results),
             "filter_stats": filter_stats,
             "batch_stats": self.news_batcher.get_batch_stats(),
@@ -334,9 +340,14 @@ class NewsIngestionOrchestrator:
                 "etfs": analysis_result.get("affected_etfs", []),
                 "sector": analysis_result.get("sector", "Mixed"),
                 "reasoning": analysis_result.get("reasoning", ""),
-                "journal_notes": f"Batch ID: {batch.batch_id}, Quality: {batch.batch_quality_score:.2f}"
+                "journal_notes": f"Batch ID: {batch.batch_id}, Quality: {batch.batch_quality_score:.2f}",
+                # New schema v2+ fields
+                "speculative": analysis_result.get("speculative", False),
+                "needs_confirmation": analysis_result.get("needs_confirmation", False),
+                "confidence_capped": analysis_result.get("confidence_capped", False),
+                "custom_reasoning": analysis_result.get("custom_reasoning", ""),
+                "signal_schema_version": analysis_result.get("signal_schema_version", 2),
             }
-            
             success = self.notion_journal.log_signal(signal_data)
             if success:
                 logger.debug("💾 Signal logged to Notion journal")

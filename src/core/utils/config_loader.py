@@ -11,6 +11,13 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import logging
 
+# Load .env if present
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 
@@ -76,6 +83,20 @@ class ConfigLoader:
         Returns:
             The setting value or default
         """
+        # Special handling for Pushover credentials
+        if key_path == "integrations.pushover.api_token":
+            env_val = os.getenv("PUSHOVER_API_TOKEN")
+            if env_val:
+                return env_val
+        if key_path == "integrations.pushover.user_token":
+            env_val = os.getenv("PUSHOVER_USER_TOKEN")
+            if env_val:
+                return env_val
+
+        # Lower the default min_confidence_threshold from 7 to 5
+        if key_path == "min_confidence_threshold" and default is None:
+            default = 5
+
         settings = self.load_settings()
         keys = key_path.split(".")
         value = settings

@@ -251,12 +251,10 @@ class NewsBatcher:
     def _is_batch_ready(self, batch: NewsBatch) -> bool:
         """Check if a batch is ready for processing"""
         logger.debug(f"🔍 Checking if batch '{batch.batch_id}' is ready: size={batch.batch_size}, max_size={self.max_headlines_per_batch}, min_size={self.min_batch_size}")
-        
         # Check if batch is full
         if batch.batch_size >= self.max_headlines_per_batch:
             logger.debug(f"✅ Batch '{batch.batch_id}' ready: full size ({batch.batch_size} >= {self.max_headlines_per_batch})")
             return True
-        
         # Check if batch has minimum size and has been waiting long enough
         if batch.batch_size >= self.min_batch_size:
             batch_age = datetime.now() - batch.created_at
@@ -269,8 +267,20 @@ class NewsBatcher:
                 logger.debug(f"⏳ Batch '{batch.batch_id}' not ready: waiting ({age_seconds:.1f}s < {self.max_batch_wait_time}s)")
         else:
             logger.debug(f"❌ Batch '{batch.batch_id}' not ready: too small ({batch.batch_size} < {self.min_batch_size})")
-        
         return False
+
+    def finalize_all_pending_batches(self) -> list:
+        """Finalize and return all pending batches that meet min_batch_size, clearing them from pending."""
+        ready_batches = []
+        for group_key in list(self.pending_batches.keys()):
+            batch = self.pending_batches[group_key]
+            if batch.batch_size >= self.min_batch_size:
+                ready_batches.append(batch)
+                del self.pending_batches[group_key]
+                if group_key in self.batch_timers:
+                    del self.batch_timers[group_key]
+        logger.info(f"📦 Finalized {len(ready_batches)} pending batches at end of cycle.")
+        return ready_batches
     
     def _get_expired_batches(self) -> List[NewsBatch]:
         """Get batches that have expired and should be processed"""

@@ -372,12 +372,10 @@ alerts:
 
 ### Batching Strategies
 
-Choose alert batching strategy:
-
-- **immediate** - Send alerts immediately
-- **smart_batch** - Group related alerts
-- **time_window** - Send in time windows
-- **daily_digest** - Daily summary
+The news ingestion system uses a hybrid batching approach:
+- Batches are finalized and processed immediately if they reach the maximum batch size.
+- Batches are also finalized if they have at least the minimum batch size and have been waiting longer than the configured max wait time.
+- At the end of each news cycle, any remaining pending batches that meet the minimum batch size are finalized and processed, ensuring no news is left unprocessed. This is handled by the `finalize_all_pending_batches` method in the batcher and called by the orchestrator.
 
 ## ⚡ Performance Tuning
 

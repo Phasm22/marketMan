@@ -15,14 +15,17 @@ logger = logging.getLogger(__name__)
 class NewsAPISource(NewsSource):
     """NewsAPI general news source"""
     
-    def __init__(self, api_key: str = None):
+    def __init__(self, api_key: str = "", config: dict = None):
         if not api_key:
-            api_key = os.getenv("NEWS_API")
+            api_key = os.getenv("NEWS_API", "")
         
         if not api_key:
             raise ValueError("NewsAPI key is required")
         
-        config = NewsSourceConfig(
+        self.config_dict = config or {}
+        self.per_source_limit = self.config_dict.get('news_ingestion', {}).get('per_source_limit', 100)
+        
+        config_obj = NewsSourceConfig(
             api_key=api_key,
             base_url="https://newsapi.org/v2",
             rate_limit_per_minute=5,  # Conservative rate limiting
@@ -31,9 +34,9 @@ class NewsAPISource(NewsSource):
             priority=2  # Medium priority
         )
         
-        super().__init__(config)
+        super().__init__(config_obj)
     
-    def fetch_news(self, query: str = None, tickers: List[str] = None, 
+    def fetch_news(self, query: str = "", tickers: Optional[List[str]] = None, 
                    hours_back: int = 24) -> List[RawNewsItem]:
         """Fetch news from NewsAPI"""
         news_items = []
@@ -43,7 +46,7 @@ class NewsAPISource(NewsSource):
         start_date = end_date - timedelta(hours=hours_back)
         
         # Build query
-        search_query = self._build_search_query(query, tickers)
+        search_query = self._build_search_query(query, tickers or [])
         
         # Build parameters
         params = {
@@ -53,7 +56,7 @@ class NewsAPISource(NewsSource):
             'language': 'en',
             'sortBy': 'publishedAt',
             'apiKey': self.config.api_key,
-            'pageSize': 20  # Limit results to conserve API calls
+            'pageSize': self.per_source_limit  # Use config value
         }
         
         logger.debug(f"📰 NewsAPI query: {search_query}")
@@ -111,7 +114,7 @@ class NewsAPISource(NewsSource):
         logger.info(f"📰 NewsAPI: fetched {len(news_items)} news items")
         return news_items
     
-    def _build_search_query(self, query: str = None, tickers: List[str] = None) -> str:
+    def _build_search_query(self, query: str = "", tickers: Optional[List[str]] = None) -> str:
         """Build search query for NewsAPI"""
         search_terms = []
         
@@ -124,9 +127,20 @@ class NewsAPISource(NewsSource):
             ticker_terms = [f'"{ticker}"' for ticker in tickers[:5]]  # Limit to 5 tickers
             search_terms.extend(ticker_terms)
         
-        # Add financial keywords if no specific query
+        # Add ETF-focused keywords if no specific query
         if not search_terms:
-            search_terms = ['ETF', 'stock market', 'trading', 'investment']
+            search_terms = [
+                'ETF',
+                'ETF flows',
+                'ETF allocation',
+                'sector ETF',
+                'thematic ETF',
+                'index fund',
+                'exchange traded fund',
+                'fund rebalancing',
+                'sector rotation',
+                'stock market'
+            ]
         
         # Combine with OR operator
         return ' OR '.join(search_terms)
@@ -141,44 +155,47 @@ class NewsAPISource(NewsSource):
             'language': 'en',
             'sortBy': 'publishedAt',
             'apiKey': self.config.api_key,
-            'pageSize': 20
+            'pageSize': self.per_source_limit  # Use config value
         }
-        
         url = f"{self.config.base_url}/top-headlines"
         response_data = self._make_request(url, params=params)
-        
         if not response_data:
+            logger.warning("⚠️ NewsAPI business returned no data")
             return []
-        
+        # Check for error/status field for consistency
+        if ("status" in response_data and response_data["status"] != "ok") or response_data.get("code"):
+            logger.warning(f"⚠️ NewsAPI business API error: {response_data}")
+            return []
         news_items = []
         articles = response_data.get('articles', [])
-        
         for article in articles:
             try:
                 published_str = article.get('publishedAt', '')
                 if published_str:
-                    published_at = datetime.fromisoformat(published_str.replace('Z', '+00:00'))
+                    try:
+                        published_at = datetime.fromisoformat(published_str.replace('Z', '+00:00'))
+                    except Exception as e:
+                        logger.warning(f"⚠️ NewsAPI: publishedAt parse failed for '{published_str}': {e}")
+                        published_at = datetime.now()
                 else:
                     published_at = datetime.now()
-                
+                # Fallback to content if description is empty
+                content = article.get('description', '') or article.get('content', '')
                 news_item = RawNewsItem(
                     title=article.get('title', ''),
-                    content=article.get('description', ''),
+                    content=content,
                     source=article.get('source', {}).get('name', 'NewsAPI'),
                     url=article.get('url', ''),
                     published_at=published_at,
                     raw_data=article
                 )
-                
                 news_items.append(news_item)
-                
             except Exception as e:
                 logger.warning(f"⚠️ Error parsing NewsAPI business article: {e}")
                 continue
-        
         return news_items
 
 
-def create_newsapi_source(api_key: str = None) -> NewsAPISource:
+def create_newsapi_source(api_key: str = "") -> NewsAPISource:
     """Factory function to create NewsAPI source"""
     return NewsAPISource(api_key) 

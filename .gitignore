@@ -143,4 +143,4 @@ config.local.json
 settings.local.py
 
 # Ignore settings.yaml to protect sensitive credentials
-config/settings.yaml
+credentials/settings.yaml

@@ -113,6 +113,11 @@ class NotionJournalIntegration:
                 - sector (str): Market sector
                 - reasoning (str): Signal reasoning
                 - journal_notes (str): Optional journal notes
+                - speculative (bool): If the signal is speculative (schema v2+)
+                - needs_confirmation (bool): If the signal needs confirmation (schema v2+)
+                - confidence_capped (bool): If confidence was capped (schema v2+)
+                - custom_reasoning (str): Custom rule-based reasoning (schema v2+)
+                - signal_schema_version (int): Schema version (default 2)
         
         Returns:
             bool: True if successfully logged, False otherwise
@@ -142,6 +147,20 @@ class NotionJournalIntegration:
             if signal_data.get("journal_notes"):
                 properties["Journal Notes"] = {"rich_text": [{"text": {"content": signal_data["journal_notes"]}}]}
             
+            # Add new schema v2+ fields if present
+            if "speculative" in signal_data:
+                properties["Speculative"] = {"checkbox": bool(signal_data["speculative"])}
+            if "needs_confirmation" in signal_data:
+                properties["Needs Confirmation"] = {"checkbox": bool(signal_data["needs_confirmation"])}
+            if "confidence_capped" in signal_data:
+                properties["Confidence Capped"] = {"checkbox": bool(signal_data["confidence_capped"])}
+            if "custom_reasoning" in signal_data:
+                properties["Custom Reasoning"] = {"rich_text": [{"text": {"content": signal_data["custom_reasoning"]}}]}
+            if "signal_schema_version" in signal_data:
+                properties["Signal Schema Version"] = {"number": int(signal_data["signal_schema_version"])}
+            else:
+                properties["Signal Schema Version"] = {"number": 2}
+            
             payload = {
                 "parent": {"database_id": self.signals_db_id},
                 "properties": properties
@@ -159,6 +178,14 @@ class NotionJournalIntegration:
                 return True
             else:
                 logger.error(f"❌ Failed to log signal: {response.status_code} - {response.text}")
+                # Warn if new fields are missing from Notion schema
+                missing_fields = []
+                for field in ["Speculative", "Needs Confirmation", "Confidence Capped", "Custom Reasoning", "Signal Schema Version"]:
+                    if field not in response.text:
+                        continue
+                    missing_fields.append(field)
+                if missing_fields:
+                    logger.warning(f"⚠️ Notion schema may be missing fields: {missing_fields}. Please update the Notion database schema if needed.")
                 return False
                 
         except Exception as e:

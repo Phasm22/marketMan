@@ -43,13 +43,18 @@ class PositionSizer:
         self.risk_config = self.config.get_strategy_config("risk_management")
         self.position_config = self.risk_config.get("position_sizing", {})
 
-        # Default values
-        self.account_size = 100000  # TODO: Get from broker
+        # Get account size from config
+        account_cfg = self.config.config.get('account', {})
+        self.account_size = account_cfg.get('account_size', 100000)
+        if not isinstance(self.account_size, (int, float)) or self.account_size <= 0:
+            logger.warning(f"Invalid or missing account_size in config, using default $100,000")
+            self.account_size = 100000
+
         self.max_position_size = self.position_config.get("max_position_size", 10000)
         self.min_position_size = self.position_config.get("min_position_size", 100)
         self.max_kelly_fraction = self.position_config.get("max_kelly_fraction", 0.25)
 
-        logger.info("Initialized position sizer")
+        logger.info(f"Initialized position sizer with account size ${self.account_size:,.2f}")
 
     def calculate_kelly_size(
         self, win_rate: float, avg_win: float, avg_loss: float, confidence: float = 1.0

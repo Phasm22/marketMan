@@ -718,3 +718,8 @@ The following features mentioned in previous documentation are **NOT YET IMPLEME
 ---
 
 **Next**: [User Guide](user-guide.md) for usage instructions 
+
+Batching now uses a hybrid approach:
+- Batches are finalized and processed immediately if they reach the maximum batch size.
+- Batches are also finalized if they have at least the minimum batch size and have been waiting longer than the configured max wait time.
+- At the end of each news cycle, any remaining pending batches that meet the minimum batch size are finalized and processed, ensuring no news is left unprocessed. This is handled by the `finalize_all_pending_batches` method in the batcher and called by the orchestrator. 

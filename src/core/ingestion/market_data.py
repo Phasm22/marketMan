@@ -8,6 +8,8 @@ import logging
 import requests
 from typing import Dict, Any, Optional
 
+from src.core.utils.config_loader import get_config
+
 logger = logging.getLogger(__name__)
 DEBUG_MODE = logging.getLogger().level == logging.DEBUG
 
@@ -57,6 +59,13 @@ def get_etf_prices(etf_symbols=None, rate_limit=True, max_retries=2):
     if etf_symbols is None:
         etf_symbols = MAJOR_ETFS
 
+    # Load config for random delays
+    config = get_config().config if callable(get_config) else {}
+    random_delay_cfg = config.get('random_delay', {})
+    price_fetch_min, price_fetch_max = random_delay_cfg.get('price_fetch', [1.0, 2.0])
+    retry_min, retry_max = random_delay_cfg.get('retry', [2.0, 4.0])
+    rate_limit_min, rate_limit_max = random_delay_cfg.get('rate_limit', [5.0, 10.0])
+
     try:
         prices = {}
         failed_symbols = []
@@ -70,7 +79,7 @@ def get_etf_prices(etf_symbols=None, rate_limit=True, max_retries=2):
                 try:
                     # Add random delay to avoid rate limits
                     if rate_limit and i > 0:
-                        delay = random.uniform(1.0, 2.0)  # Increased delay
+                        delay = random.uniform(price_fetch_min, price_fetch_max)
                         time.sleep(delay)
 
                     ticker = yf.Ticker(symbol)
@@ -117,14 +126,14 @@ def get_etf_prices(etf_symbols=None, rate_limit=True, max_retries=2):
                     else:
                         logger.warning(f"⚠️ No price data for {symbol}")
                         if attempt < max_retries - 1:
-                            time.sleep(random.uniform(2.0, 4.0))  # Wait before retry
+                            time.sleep(random.uniform(retry_min, retry_max))  # Wait before retry
                         continue
 
                 except requests.exceptions.HTTPError as e:
                     if "429" in str(e):  # Rate limit error
                         logger.warning(f"⚠️ Rate limited for {symbol}, attempt {attempt + 1}/{max_retries}")
                         if attempt < max_retries - 1:
-                            time.sleep(random.uniform(5.0, 10.0))  # Longer wait for rate limits
+                            time.sleep(random.uniform(rate_limit_min, rate_limit_max))  # Longer wait for rate limits
                         continue
                     else:
                         logger.warning(f"⚠️ HTTP error for {symbol}: {str(e)[:100]}...")
@@ -132,7 +141,7 @@ def get_etf_prices(etf_symbols=None, rate_limit=True, max_retries=2):
                 except Exception as e:
                     logger.warning(f"⚠️ Error fetching price for {symbol}: {str(e)[:100]}...")
                     if attempt < max_retries - 1:
-                        time.sleep(random.uniform(2.0, 4.0))
+                        time.sleep(random.uniform(retry_min, retry_max))
                     continue
             
             if not success:
@@ -150,24 +159,30 @@ def get_etf_prices(etf_symbols=None, rate_limit=True, max_retries=2):
         if success_count < 3:
             reason = "Too few successful price fetches, using fallback mock data"
             logger.warning(f"⚠️ {reason}")
-            return _get_fallback_mock_data(etf_symbols), True, reason
+            return _get_fallback_mock_data(etf_symbols, config), True, reason
             
         return prices, False, None
 
     except ImportError:
         reason = "yfinance not installed, using fallback mock data"
         logger.warning(f"⚠️ {reason}")
-        return _get_fallback_mock_data(etf_symbols), True, reason
+        return _get_fallback_mock_data(etf_symbols, config), True, reason
     except Exception as e:
         reason = f"Error fetching ETF prices: {e}, using fallback mock data"
         logger.warning(f"⚠️ {reason}")
-        return _get_fallback_mock_data(etf_symbols), True, reason
+        return _get_fallback_mock_data(etf_symbols, config), True, reason
 
 
-def _get_fallback_mock_data(etf_symbols):
+def _get_fallback_mock_data(etf_symbols, config=None):
     """Provide fallback mock data when real market data is unavailable"""
     logger.info("🔄 Using fallback mock market data")
-    
+    if config is None:
+        config = get_config().config if callable(get_config) else {}
+    fallback_cfg = config.get('fallback_data', {})
+    price_min, price_max = fallback_cfg.get('price_range', [50, 150])
+    change_min, change_max = fallback_cfg.get('change_pct_range', [-5, 5])
+    volume_min, volume_max = fallback_cfg.get('volume_range', [500000, 1500000])
+
     # Mock price data for common ETFs
     mock_prices = {
         "SPY": {"price": 450.25, "change_pct": 0.5, "name": "SPDR S&P 500 ETF", "volume": 5000000},
@@ -188,12 +203,12 @@ def _get_fallback_mock_data(etf_symbols):
         if symbol in mock_prices:
             fallback_prices[symbol] = mock_prices[symbol]
         else:
-            # Generate reasonable mock data for unknown symbols
+            # Generate reasonable mock data for unknown symbols using config-driven ranges
             fallback_prices[symbol] = {
-                "price": 50.0 + (hash(symbol) % 100),  # Deterministic but varied price
-                "change_pct": (hash(symbol) % 10) - 5,  # -5% to +5% change
+                "price": round(random.uniform(price_min, price_max), 2),
+                "change_pct": round(random.uniform(change_min, change_max), 2),
                 "name": f"{symbol} ETF",
-                "volume": 500000 + (hash(symbol) % 1000000),  # Reasonable volume
+                "volume": int(random.uniform(volume_min, volume_max)),
             }
     
     logger.info(f"✅ Generated fallback data for {len(fallback_prices)} ETFs")

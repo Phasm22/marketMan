@@ -1,0 +1,330 @@
+# MarketMan Main Configuration
+# This file contains all user-facing tunable parameters
+
+# Application Settings
+app:
+  name: "MarketMan"
+  version: "1.0.0"
+  debug: false
+  log_level: "INFO"
+
+# Database Configuration
+database:
+  type: sqlite
+  path: data/marketman.db
+
+# Signal Processing
+signals:
+  etf:
+    enabled: true
+    update_interval_minutes: 5
+    conviction_threshold: 0.6
+    max_signals_per_day: 20
+  
+  news:
+    enabled: true
+    gpt_analysis_enabled: true
+    sentiment_threshold: 0.6
+    max_news_items_per_analysis: 50
+
+# Risk Management
+risk:
+  position_sizing_enabled: true
+  max_position_size_percent: 7.5
+  stop_loss_percent: 2.0
+  max_daily_loss_percent: 3.0
+  max_position_size: 0.02  # 2% of portfolio
+  max_daily_loss: 0.08     # 8% daily loss limit
+  max_kelly_fraction: 0.25  # Maximum Kelly Criterion allocation
+
+# Options Trading
+options:
+  scalping_enabled: false  # Toggle to activate
+  symbols: ["QQQ", "SPY"]
+  max_trade_size: 1000
+  profit_target_percent: 1.5
+  stop_loss_percent: 1.0
+  max_trades_per_day: 5
+
+# Performance Monitoring
+performance:
+  tracking_enabled: true
+  update_interval_minutes: 15
+  dashboard_enabled: true
+
+# Integrations
+integrations:
+  notion:
+    enabled: true
+    database_id: ""  # Set in credentials
+    update_interval_minutes: 10
+  
+  gmail:
+    enabled: true
+    credentials_path: "config/credentials/gmail_credentials.json"
+    token_path: "config/credentials/gmail_token.pickle"
+    poll_interval_minutes: 5
+  
+  pushover:
+    enabled: true
+    api_token: "akjhp6gm868mieuixabjum98tbbq29"
+    user_token: "ur914z6b94u72hk8nxc3qo13ift4aw"
+    confidence_threshold: 5
+    risk_warnings_enabled: true
+    rate_limit_per_hour: 10
+    priority_settings: {
+      "high": 1,
+      "medium": 0,
+      "low": -1
+    }
+
+# Logging
+logging:
+  file_enabled: true
+  log_file: "logs/marketman.log"
+  max_file_size_mb: 10
+  backup_count: 5
+
+# Alert Configuration
+alerts:
+  batch_strategy: immediate
+  notification_channels: [pushover, notion]
+  max_daily_alerts: 15
+
+# News Ingestion Configuration
+news_ingestion:
+  # Daily budget controls
+  max_daily_headlines: 100
+  max_daily_ai_calls: 100
+  max_monthly_ai_budget: 30.00  # USD
+  per_source_limit: 100
+  
+  # Market hours (EST)
+  market_hours:
+    start: "09:30"
+    end: "16:00"
+    timezone: "America/New_York"
+  
+  # Keywords for pre-filtering (high-impact terms)
+  keywords:
+    - "ETF"
+    - "SPY"
+    - "QQQ"
+    - "DIA"
+    - "interest rate"
+    - "Fed"
+    - "Federal Reserve"
+    - "earnings"
+    - "cut"
+    - "downgrade"
+    - "upgrade"
+    - "SEC"
+    - "lawsuit"
+    - "merger"
+    - "acquisition"
+    - "IPO"
+    - "bankruptcy"
+    - "dividend"
+    - "split"
+    - "guidance"
+    - "forecast"
+    - "analyst"
+    - "rating"
+    - "target"
+    - "volatility"
+    - "VIX"
+    - "VIXY"
+    - "VXX"
+    # Added sector-specific and trending keywords for broader matching
+    - "AI"
+    - "artificial intelligence"
+    - "robotics"
+    - "automation"
+    - "clean energy"
+    - "renewable"
+    - "solar"
+    - "wind"
+    - "electric vehicle"
+    - "EV"
+    - "battery"
+    - "semiconductor"
+    - "chip"
+    - "defense"
+    - "military"
+    - "cybersecurity"
+    - "blockchain"
+    - "crypto"
+    - "biotech"
+    - "healthcare"
+    - "fintech"
+    - "cloud"
+    - "SaaS"
+    - "5G"
+    - "quantum"
+    - "space"
+    - "AR"
+    - "VR"
+    - "metaverse"
+    - "Web3"
+    - "DeFi"
+    - "NFT"
+  
+  # Tracked tickers (ETFs we care about)
+  tracked_tickers:
+    # AI & Tech
+    - "BOTZ"
+    - "ROBO"
+    - "IRBO"
+    - "ARKQ"
+    - "SMH"
+    - "SOXX"
+    # Defense & Aerospace
+    - "ITA"
+    - "XAR"
+    - "DFEN"
+    - "PPA"
+    # Nuclear & Uranium
+    - "URNM"
+    - "NLR"
+    - "URA"
+    # Clean Energy
+    - "ICLN"
+    - "TAN"
+    - "QCLN"
+    - "PBW"
+    - "LIT"
+    - "REMX"
+    # Volatility & Inverse
+    - "VIXY"
+    - "VXX"
+    - "SQQQ"
+    - "SPXS"
+    # Major indices
+    - "SPY"
+    - "QQQ"
+    - "DIA"
+    - "IWM"
+  
+  # Batching configuration
+  batching:
+    max_headlines_per_batch: 1
+    min_batch_size: 1
+    max_batch_wait_time: 300  # 5 minutes
+  
+  # Duplicate detection
+  duplicate_detection:
+    enabled: true
+    time_window_hours: 24
+    similarity_threshold: 0.4
+  
+  # Multi-source validation
+  multi_source_validation:
+    enabled: true
+    source_weights:
+      "Reuters": 5
+      "Bloomberg": 5
+      "Financial Times": 5
+      "CNBC": 4
+      "MarketWatch": 4
+      "Yahoo Finance": 3
+      "Seeking Alpha": 3
+      "TechCrunch": 3
+      "Ars Technica": 2
+      "unknown": 4
+    source_categories:
+      "Reuters": "financial"
+      "Bloomberg": "financial"
+      "Financial Times": "financial"
+      "CNBC": "financial"
+      "MarketWatch": "financial"
+      "Yahoo Finance": "financial"
+      "Seeking Alpha": "financial"
+      "TechCrunch": "tech"
+      "Ars Technica": "tech"
+      "unknown": "general"
+  
+  # Advanced filtering
+  advanced_filtering:
+    min_relevance_score: 0.01
+    min_sentiment_strength: 0.05
+    require_multiple_tickers: false
+    min_ticker_count: 1
+  
+  # Disable market hours filter for testing
+  disable_market_hours_filter: true
+
+# API Rate Limits
+api_limits:
+  finnhub:
+    calls_per_minute: 60
+    calls_per_day: 1000
+  newdata:
+    calls_per_day: 200
+  newsapi:
+    calls_per_day: 100
+    articles_per_credit: 10
+  openai:
+    max_tokens_per_request: 1000
+    max_requests_per_day: 50
+
+# Filtering rules
+filters:
+  exclude_broad_market_unless_no_alternative: true
+  require_specialized_etf_preference: true
+  max_etfs_per_signal: 7
+
+# Additional settings
+min_confidence_threshold: 4
+min_mentions_for_etf: 2
+technical_analysis:
+  enabled: true
+  indicators: ["rsi", "macd", "bollinger"]
+
+# Pattern Recognition
+pattern_recognition:
+  enabled: true
+  min_pattern_confidence: 0.7
+  supported_patterns:
+    - "double_top"
+    - "double_bottom"
+    - "head_and_shoulders"
+    - "breakout"
+    - "breakdown"
+    - "support_resistance"
+    - "volume_spike"
+
+fallback_data:
+  price_range: [50, 150]         # Min/max fallback price for unknown ETFs
+  change_pct_range: [-5, 5]      # Min/max percent change
+  volume_range: [500000, 1500000] # Min/max volume
+
+random_delay:
+  price_fetch: [1.0, 2.0]        # Min/max seconds for price fetch delay
+  retry: [2.0, 4.0]              # Min/max seconds for retry delay
+  rate_limit: [5.0, 10.0]        # Min/max seconds for rate limit backoff
+
+sector_mappings:
+  AI: "Artificial Intelligence"
+  CleanTech: "Clean Technology"
+  Defense: "Defense & Aerospace"
+  Volatility: "Volatility & Hedge"
+  Nuclear: "Nuclear & Uranium"
+  Broad: "Broad Market"
+  # Add more as needed
+
+conviction_tiers:
+  high: 9
+  moderate: 7
+  low: 5
+
+reporting:
+  include_moderate_positions: true
+
+supported_timezones:
+  - "America/New_York"
+  - "Europe/London"
+  - "Asia/Tokyo"
+default_timezone: "America/New_York"
+
+account:
+  account_size: 2000  # USD, set your actual account size here

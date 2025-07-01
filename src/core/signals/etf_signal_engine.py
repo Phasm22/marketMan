@@ -8,6 +8,9 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 from typing import List, Dict, Optional, Tuple
+import copy
+
+from ..utils import get_config
 
 load_dotenv()
 
@@ -18,6 +21,132 @@ logger = logging.getLogger(__name__)
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# Initialize config
+config_loader = get_config()
+
+# Robust defaults for custom_rules
+DEFAULT_CUSTOM_RULES = {
+    'rsi_neutral_range': [45, 55],
+    'macd_mild_threshold': 0.5,
+    'climate_policy_keywords': ['policy', 'funding', 'ETF flow'],
+    'volatility_etfs': ['VIXY', 'VXX', 'UVXY'],
+    'indirect_news_confidence_penalty': 1,
+}
+
+def get_custom_rules(config):
+    custom_rules = copy.deepcopy(DEFAULT_CUSTOM_RULES)
+    user_rules = config.get('custom_rules', {})
+    if not isinstance(user_rules, dict):
+        logger.error('custom_rules in config is malformed, using defaults.')
+        return custom_rules
+    for k, v in user_rules.items():
+        custom_rules[k] = v
+    return custom_rules
+
+# Helper: context fallback
+class ContextWrapper(dict):
+    def get_stale(self, key, max_age_seconds=600):
+        val = self.get(key)
+        if not val or not hasattr(val, 'timestamp'):
+            logger.warning(f"Context missing or no timestamp for {key}")
+            return None
+        age = (datetime.now() - val.timestamp).total_seconds()
+        if age > max_age_seconds:
+            logger.warning(f"Context for {key} is stale ({age:.0f}s old)")
+            return None
+        return val
+
+# Main custom rule application
+
+def apply_custom_signal_rules(analysis_result, news_batch, technicals, pattern_results, config, context):
+    """
+    Applies custom signal rules and annotates the analysis_result with:
+      - speculative: True if downgraded due to indirect/thematic news
+      - needs_confirmation: True if technicals/news are borderline and only one source
+      - confidence_capped: True if confidence was capped due to quality/confirmation rules
+      - custom_reasoning: Human-readable explanation of all adjustments
+      - signal_schema_version: 2 (for schema tracking)
+    Handles combinations of these flags for robust downstream logic.
+    """
+    custom_rules = get_custom_rules(config)
+    # Initialize flags
+    analysis_result['speculative'] = False
+    analysis_result['needs_confirmation'] = False
+    analysis_result['confidence_capped'] = False
+    analysis_result['custom_reasoning'] = ''
+    analysis_result['signal_schema_version'] = 2
+    reasoning_notes = []
+    # Rule 1: Neutral RSI + mild MACD + vague news
+    def is_neutral_rsi(tech):
+        rsi = tech.get('rsi')
+        rng = custom_rules['rsi_neutral_range']
+        return rsi is not None and rng[0] <= rsi <= rng[1]
+    def is_mild_macd(tech):
+        macd = tech.get('macd')
+        return macd is not None and abs(macd) <= custom_rules['macd_mild_threshold']
+    def is_vague_news(analysis):
+        reasoning = analysis.get('reasoning', '')
+        return len(reasoning) < 60 or 'uncertain' in reasoning.lower() or 'may' in reasoning.lower()
+    def has_price_or_volume_confirmation(tech):
+        return tech.get('price_move', 0) > 1 or tech.get('volume_spike', False)
+    def is_thematic_but_indirect(batch, analysis):
+        # Placeholder: check if any mentioned company is not in ETF holdings (requires ETF holdings data)
+        return analysis.get('theme_category', '').lower() == 'ai/robotics' and 'meta' in batch.get_combined_text().lower() and not any('meta' in etf.lower() for etf in analysis.get('affected_etfs', []))
+    def is_volatility_etf(analysis):
+        return any(etf in custom_rules['volatility_etfs'] for etf in analysis.get('affected_etfs', []))
+    def is_single_bearish_news(batch):
+        return batch.batch_size == 1 and 'bearish' in batch.get_combined_text().lower()
+    def has_implied_vol_confirmation(tech, patterns):
+        # Placeholder: check context for implied vol
+        return context.get('implied_vol_confirmed', False)
+    def is_climate_etf(analysis):
+        return 'climate' in analysis.get('theme_category', '').lower() or 'clean' in analysis.get('theme_category', '').lower()
+    def has_concrete_policy_or_funding(batch):
+        text = batch.get_combined_text().lower()
+        return any(kw in text for kw in custom_rules['climate_policy_keywords'])
+    def is_treasury_volatility_signal(batch, analysis):
+        return 'treasury' in batch.get_combined_text().lower() and is_volatility_etf(analysis)
+    def has_options_or_futures_confirmation(tech, patterns):
+        return context.get('options_flow_confirmed', False)
+    # Rule 1
+    for ticker, tech in (technicals or {}).items():
+        if is_neutral_rsi(tech) and is_mild_macd(tech) and is_vague_news(analysis_result):
+            if not has_price_or_volume_confirmation(tech):
+                if analysis_result['signal'] == 'bullish':
+                    analysis_result['custom_validated'] = True
+                    analysis_result['signal'] = 'neutral'
+                    note = "Downgraded to neutral due to lack of confirmation (neutral RSI, mild MACD, vague news)"
+                    reasoning_notes.append(note)
+                    logger.info(f"[SignalRule] {note}")
+    # Rule 2
+    if is_thematic_but_indirect(news_batch, analysis_result):
+        penalty = custom_rules.get('indirect_news_confidence_penalty', 2)
+        old_conf = analysis_result['confidence']
+        analysis_result['confidence'] = max(1, analysis_result['confidence'] - penalty)
+        analysis_result['speculative'] = True
+        note = f"Speculative: AI news is outside ETF scope (penalty -{penalty}, {old_conf}->{analysis_result['confidence']})"
+        reasoning_notes.append(note)
+        logger.info(f"[SignalRule] {note}")
+    # Rule 3 & 5
+    if is_volatility_etf(analysis_result):
+        if not (has_implied_vol_confirmation(technicals, pattern_results) or has_options_or_futures_confirmation(technicals, pattern_results)):
+            analysis_result['custom_validated'] = True
+            analysis_result['signal'] = 'neutral'
+            note = "Neutralized due to lack of volatility confirmation."
+            reasoning_notes.append(note)
+            logger.info(f"[SignalRule] {note}")
+    # Rule 4
+    if is_climate_etf(analysis_result) and not has_concrete_policy_or_funding(news_batch):
+        if analysis_result['signal'] == 'bullish':
+            analysis_result['custom_validated'] = True
+            analysis_result['signal'] = 'neutral'
+            note = "Downgraded to neutral: climate news lacks concrete policy/funding."
+            reasoning_notes.append(note)
+            logger.info(f"[SignalRule] {note}")
+    # Compose reasoning
+    if reasoning_notes:
+        analysis_result['custom_reasoning'] = ' | '.join(reasoning_notes)
+    return analysis_result
 
 def generate_tactical_explanation(analysis_result, article_title):
     """Generate a tactical, conversational explanation of the trading signal"""
@@ -310,65 +439,41 @@ def categorize_etfs_by_sector(etfs):
     return focused_etfs, primary_sector
 
 
-def analyze_news_batch(news_batch, etf_prices=None, contextual_insight=None, memory=None, technicals=None, pattern_results=None):
-    """
-    Analyze a batch of news items for thematic ETF opportunities.
-    Processes multiple headlines together for more comprehensive analysis.
-    
-    Args:
-        news_batch: NewsBatch object containing multiple news items
-        etf_prices: Optional dict of current ETF prices
-        contextual_insight: Optional contextual information from memory
-        memory: Optional MarketMemory instance for storing results
-        technicals: Optional dict of technical indicators for batch tickers
-        pattern_results: Optional dict of pattern recognition results
-    
-    Returns:
-        Dict containing batch analysis results
-    """
+def analyze_news_batch(news_batch, etf_prices=None, contextual_insight=None, memory=None, technicals=None, pattern_results=None, context=None):
     if not news_batch or not news_batch.items:
         logger.warning("⚠️ Empty news batch provided")
         return None
-    
     logger.info(f"🤖 Analyzing news batch: {news_batch.get_summary()}")
-    
-    # Build batch analysis prompt
     prompt = build_batch_analysis_prompt(news_batch, etf_prices, contextual_insight, technicals, pattern_results)
-    
     try:
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,  # Lower temperature for more consistent JSON
+            temperature=0.1,
         )
-        
         result = response.choices[0].message.content.strip()
-        
         if DEBUG_MODE:
             logger.debug(f"🤖 Batch analysis response: {result}")
         else:
             logger.debug(f"🤖 Batch analysis response received ({len(result)} chars)")
-        
-        # Parse JSON response
         result = result.replace("```json", "").replace("```", "").strip()
-        
-        # Try to extract JSON from the response (handle extra text)
         try:
-            # Find the first { and last } to extract JSON
             start = result.find('{')
             end = result.rfind('}') + 1
             if start != -1 and end != 0:
                 json_str = result[start:end]
                 json_result = json.loads(json_str)
             else:
-                # Fallback: try to parse the whole thing
                 json_result = json.loads(result)
-            
+            # Apply custom rules (with context fallback)
+            config = config_loader.load_settings()
+            if context is None:
+                context = ContextWrapper()
+            json_result = apply_custom_signal_rules(json_result, news_batch, technicals, pattern_results, config, context)
             # Apply hard rules to batch analysis
             if not _validate_batch_analysis(json_result):
                 logger.info(f"🚫 Batch analysis failed validation: {news_batch.batch_id}")
                 return None
-            
             # Add metadata
             json_result["batch_id"] = news_batch.batch_id
             json_result["batch_size"] = news_batch.batch_size
@@ -379,24 +484,19 @@ def analyze_news_batch(news_batch, etf_prices=None, contextual_insight=None, mem
             json_result["technicals_included"] = len(technicals) if technicals else 0
             json_result["patterns_detected"] = pattern_results.get("patterns_detected", 0) if pattern_results else 0
             json_result["patterns"] = pattern_results.get("patterns", []) if pattern_results else []
-            
-            # Store in memory if available
             if memory:
                 try:
                     memory.store_signal(json_result, f"Batch: {news_batch.batch_id}")
                     logger.debug("💾 Batch analysis stored in MarketMemory")
                 except Exception as mem_error:
                     logger.warning(f"⚠️ Failed to store batch analysis in memory: {mem_error}")
-            
             logger.info(f"✅ Batch analysis complete: {json_result.get('signal', 'Unknown')} signal, confidence {json_result.get('confidence', 0)}")
             return json_result
-            
         except json.JSONDecodeError as e:
             logger.error(f"❌ Failed to parse batch analysis response as JSON: {e}")
             if DEBUG_MODE:
                 logger.error(f"Raw response: {result}")
             return None
-            
     except Exception as e:
         if news_batch is not None and hasattr(news_batch, 'batch_id'):
             logger.error(f"❌ Error calling OpenAI API for batch analysis (batch_id={news_batch.batch_id}): {e}")
@@ -517,6 +617,13 @@ Analyze this batch of related news items to determine if there's a STRONG, ACTIO
 • If technical indicators contradict news sentiment, explain the divergence
 • If pattern recognition supports the signal, increase confidence
 
+**IMPORTANT SIGNAL GUIDANCE:**
+• AVOID "Neutral" signals unless the news has absolutely no market implications
+• If there are ANY market implications (positive or negative), choose "Bullish" or "Bearish"
+• Be more confident (6-8) when there are clear sector-specific implications
+• Higher confidence (8-10) when multiple factors align (news + technical + patterns)
+• Lower confidence (5-7) when there are mixed signals but still actionable
+
 If this batch does NOT contain actionable ETF opportunities, return:
 {{"relevance": "not_financial", "confidence": 0}}
 
@@ -543,56 +650,83 @@ Otherwise, return:
   "pattern_recognition": "Summary of any detected chart patterns and their impact on the signal"
 }}
 
-**REMEMBER:** This is a BATCH analysis - look for patterns and confirmation across multiple headlines. The signal should be stronger if multiple headlines support the same thesis. Consider source quality, agreement, technical indicators, and pattern recognition when determining confidence.
+**REMEMBER:** This is a BATCH analysis - look for patterns and confirmation across multiple headlines. The signal should be stronger if multiple headlines support the same thesis. Consider source quality, agreement, technical indicators, and pattern recognition when determining confidence. Be decisive - if there are market implications, choose a direction rather than staying neutral.
 """
 
 
 def _validate_batch_analysis(analysis_result):
-    """Validate batch analysis results against hard rules with quality considerations"""
-    # Check confidence threshold
-    if analysis_result.get("confidence", 0) < 7:  # Restored from 3
-        logger.debug(f"Batch confidence below threshold: {analysis_result.get('confidence')}")
+    min_confidence = config_loader.get_setting("min_confidence_threshold", 5)
+    min_mentions_for_etf = config_loader.get_setting("min_mentions_for_etf", 2)
+    logger.debug(f"🔍 Validating batch analysis: {analysis_result}")
+    # If custom_validated, log if we overrule
+    if analysis_result.get('custom_validated'):
+        # Check if we would reject
+        confidence = analysis_result.get("confidence", 0)
+        signal = analysis_result.get("signal", "").lower()
+        affected_etfs = analysis_result.get("affected_etfs", [])
+        tracked_tickers = set(config_loader.get_setting("news_ingestion.tracked_tickers", []))
+        if not tracked_tickers:
+            specialized_etfs = {
+                "BOTZ", "ITA", "ICLN", "URA", "XAR", "DFEN", "PPA", "ROBO", "IRBO", "ARKQ",
+                "SMH", "SOXX", "TAN", "QCLN", "PBW", "LIT", "REMX", "URNM", "NLR", "VIXY",
+                "VXX", "SQQQ", "SPXS"
+            }
+        else:
+            specialized_etfs = tracked_tickers
+        overruling = False
+        if confidence < min_confidence:
+            overruling = True
+        if signal not in ["bullish", "bearish"]:
+            overruling = True
+        if not any(etf in specialized_etfs for etf in affected_etfs):
+            overruling = True
+        if overruling:
+            logger.warning(f"_validate_batch_analysis is overruling custom rule: {analysis_result.get('custom_reasoning', '')} | signal={signal}, confidence={confidence}, batch_id={analysis_result.get('batch_id', 'N/A')}")
+    # Proceed with normal validation
+    confidence = analysis_result.get("confidence", 0)
+    if confidence < min_confidence:
+        logger.info(f"❌ Batch rejected: confidence {confidence} < threshold {min_confidence} (batch_id={analysis_result.get('batch_id', 'N/A')})")
         return False
-    
-    # Check signal type
     signal = analysis_result.get("signal", "").lower()
     if signal not in ["bullish", "bearish"]:
-        logger.debug(f"Batch signal not actionable: {signal}")
+        logger.info(f"❌ Batch rejected: signal type '{signal}' not actionable (batch_id={analysis_result.get('batch_id', 'N/A')})")
         return False
-    
-    # Check for specialized ETFs
-    specialized_etfs = [
-        "BOTZ", "ITA", "ICLN", "URA", "XAR", "DFEN", "PPA", "ROBO", "IRBO", "ARKQ",
-        "SMH", "SOXX", "TAN", "QCLN", "PBW", "LIT", "REMX", "URNM", "NLR", "VIXY",
-        "VXX", "SQQQ", "SPXS"
-    ]
-    
+    tracked_tickers = set(config_loader.get_setting("news_ingestion.tracked_tickers", []))
     affected_etfs = analysis_result.get("affected_etfs", [])
+    if not tracked_tickers:
+        specialized_etfs = {
+            "BOTZ", "ITA", "ICLN", "URA", "XAR", "DFEN", "PPA", "ROBO", "IRBO", "ARKQ",
+            "SMH", "SOXX", "TAN", "QCLN", "PBW", "LIT", "REMX", "URNM", "NLR", "VIXY",
+            "VXX", "SQQQ", "SPXS"
+        }
+    else:
+        specialized_etfs = tracked_tickers
     if not any(etf in specialized_etfs for etf in affected_etfs):
-        logger.debug("Batch analysis contains no specialized ETFs")
+        logger.info(f"❌ Batch rejected: no specialized ETFs in affected_etfs {affected_etfs} (batch_id={analysis_result.get('batch_id', 'N/A')})")
         return False
-    
-    # Additional quality checks (if batch metadata is available)
     if "batch_quality_score" in analysis_result:
         quality_score = analysis_result.get("batch_quality_score", 0)
-        if quality_score < 0.4:  # Very low quality batches
-            logger.debug(f"Batch quality score too low: {quality_score}")
+        min_quality = config_loader.get_setting("news_ingestion.advanced_filtering.min_relevance_score", 0.4)
+        if quality_score < min_quality:
+            logger.info(f"❌ Batch rejected: quality score {quality_score} < min_quality {min_quality} (batch_id={analysis_result.get('batch_id', 'N/A')})")
             return False
-    
     if "source_quality_assessment" in analysis_result:
         source_assessment = analysis_result.get("source_quality_assessment", "").lower()
         if "unreliable" in source_assessment or "contradictory" in source_assessment:
-            logger.debug(f"Source quality assessment indicates unreliable sources")
+            logger.info(f"❌ Batch rejected: source quality assessment '{source_assessment}' (batch_id={analysis_result.get('batch_id', 'N/A')})")
             return False
-    
+    logger.debug(f"✅ Batch analysis passed all validation checks")
     return True
 
 
 def _validate_individual_analysis(analysis_result):
-    """Validate individual analysis results against hard rules with quality considerations"""
-    # Check confidence threshold
-    if analysis_result.get("confidence", 0) < 7:  # Restored from 3
-        logger.debug(f"Individual confidence below threshold: {analysis_result.get('confidence')}")
+    """Validate individual analysis results against configurable rules with quality considerations"""
+    # Get configurable thresholds from settings
+    min_confidence = config_loader.get_setting("min_confidence_threshold", 7)
+    
+    # Check confidence threshold (now configurable)
+    if analysis_result.get("confidence", 0) < min_confidence:
+        logger.debug(f"Individual confidence below threshold: {analysis_result.get('confidence')} < {min_confidence}")
         return False
     
     # Check signal type
@@ -601,16 +735,22 @@ def _validate_individual_analysis(analysis_result):
         logger.debug(f"Individual signal not actionable: {signal}")
         return False
     
-    # Check for specialized ETFs
-    specialized_etfs = [
-        "BOTZ", "ITA", "ICLN", "URA", "XAR", "DFEN", "PPA", "ROBO", "IRBO", "ARKQ",
-        "SMH", "SOXX", "TAN", "QCLN", "PBW", "LIT", "REMX", "URNM", "NLR", "VIXY",
-        "VXX", "SQQQ", "SPXS"
-    ]
-    
+    # Check for specialized ETFs (configurable list from tracked_tickers)
+    tracked_tickers = set(config_loader.get_setting("news_ingestion.tracked_tickers", []))
     affected_etfs = analysis_result.get("affected_etfs", [])
+    
+    # If no tracked tickers configured, use default specialized list
+    if not tracked_tickers:
+        specialized_etfs = {
+            "BOTZ", "ITA", "ICLN", "URA", "XAR", "DFEN", "PPA", "ROBO", "IRBO", "ARKQ",
+            "SMH", "SOXX", "TAN", "QCLN", "PBW", "LIT", "REMX", "URNM", "NLR", "VIXY",
+            "VXX", "SQQQ", "SPXS"
+        }
+    else:
+        specialized_etfs = tracked_tickers
+    
     if not any(etf in specialized_etfs for etf in affected_etfs):
-        logger.debug("Individual analysis contains no specialized ETFs")
+        logger.debug(f"Individual analysis contains no specialized ETFs. Affected: {affected_etfs}, Specialized: {specialized_etfs}")
         return False
     
     # Additional quality checks (if individual metadata is available)

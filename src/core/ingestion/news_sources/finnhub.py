@@ -15,12 +15,15 @@ logger = logging.getLogger(__name__)
 class FinnhubNewsSource(NewsSource):
     """Finnhub financial news source"""
     
-    def __init__(self, api_key: str = None):
+    def __init__(self, api_key: Optional[str] = None, config: dict = None):
         if not api_key:
             api_key = os.getenv("FINNHUB_KEY")
         
         if not api_key:
             raise ValueError("Finnhub API key is required")
+        
+        self.config_dict = config or {}
+        self.per_source_limit = self.config_dict.get('news_ingestion', {}).get('per_source_limit', 100)
         
         config = NewsSourceConfig(
             api_key=api_key,
@@ -38,43 +41,48 @@ class FinnhubNewsSource(NewsSource):
             'X-Finnhub-Token': api_key
         })
     
-    def fetch_news(self, query: str = None, tickers: List[str] = None, 
+    def fetch_news(self, query: Optional[str] = None, tickers: Optional[List[str]] = None, 
                    hours_back: int = 24) -> List[RawNewsItem]:
-        """Fetch news from Finnhub"""
+        """Fetch news from Finnhub
+        - If tickers are provided, use /company-news for each ticker (more precise, less noise)
+        - If no tickers, use /news (general market news, more noise)
+        - 'q' param is ignored by Finnhub and not sent
+        """
         news_items = []
-        
-        # Calculate time range
         end_time = datetime.now()
         start_time = end_time - timedelta(hours=hours_back)
-        
-        # Convert to Unix timestamps
-        start_timestamp = int(start_time.timestamp())
-        end_timestamp = int(end_time.timestamp())
-        
-        # Build query parameters
-        params = {
-            'from': start_timestamp,
-            'to': end_timestamp,
-            'token': self.config.api_key
-        }
-        
-        # Add tickers if provided
+        start_date = start_time.strftime('%Y-%m-%d')
+        end_date = end_time.strftime('%Y-%m-%d')
+        # If tickers are provided, use /company-news for each ticker
         if tickers:
-            # Finnhub supports multiple tickers separated by comma
-            params['symbol'] = ','.join(tickers[:10])  # Limit to 10 tickers per request
-        
-        # Add query if provided
-        if query:
-            params['q'] = query
-        
-        # Make request
-        url = f"{self.config.base_url}/news"
-        response_data = self._make_request(url, params=params)
-        
+            for ticker in tickers[:10]:  # Limit to 10 tickers per cycle
+                params = {
+                    'symbol': ticker,
+                    'from': start_date,
+                    'to': end_date,
+                    'token': self.config.api_key
+                }
+                url = f"{self.config.base_url}/company-news"
+                response_data = self._make_request(url, params=params)
+                news_items_for_ticker = self._parse_response(response_data, ticker=ticker)
+                news_items.extend(news_items_for_ticker[:self.per_source_limit])
+        else:
+            # General market news
+            params = {
+                'category': 'general',
+                'token': self.config.api_key
+            }
+            url = f"{self.config.base_url}/news"
+            response_data = self._make_request(url, params=params)
+            news_items.extend(self._parse_response(response_data)[:self.per_source_limit])
+        logger.info(f"📰 Finnhub: fetched {len(news_items)} news items")
+        return news_items
+
+    def _parse_response(self, response_data, ticker=None):
+        """Parse Finnhub API response, log warnings for missing datetime, testable for edge cases."""
+        news_items = []
         if not response_data:
-            return []
-        
-        # Parse response
+            return news_items
         articles = []
         if isinstance(response_data, dict):
             articles = response_data.get('result', [])
@@ -82,20 +90,23 @@ class FinnhubNewsSource(NewsSource):
             articles = response_data
         else:
             logger.warning(f"⚠️ Unexpected Finnhub response format: {type(response_data)}")
-            return []
-        
+            return news_items
         for article in articles:
             try:
-                # Parse timestamp
-                published_at = datetime.fromtimestamp(article.get('datetime', 0))
-                
-                # Extract content
+                dt = article.get('datetime')
+                if not dt:
+                    logger.warning(f"Finnhub article missing datetime: {article}")
+                    published_at = datetime.fromtimestamp(0)
+                else:
+                    try:
+                        published_at = datetime.fromtimestamp(dt)
+                    except Exception:
+                        logger.warning(f"Finnhub article has malformed datetime: {dt} | {article}")
+                        published_at = datetime.fromtimestamp(0)
                 title = article.get('headline', '')
                 content = article.get('summary', '')
                 source = article.get('source', 'Finnhub')
                 url = article.get('url', '')
-                
-                # Create RawNewsItem
                 news_item = RawNewsItem(
                     title=title,
                     content=content,
@@ -104,14 +115,10 @@ class FinnhubNewsSource(NewsSource):
                     published_at=published_at,
                     raw_data=article
                 )
-                
                 news_items.append(news_item)
-                
             except Exception as e:
                 logger.warning(f"⚠️ Error parsing Finnhub article: {e}")
                 continue
-        
-        logger.info(f"📰 Finnhub: fetched {len(news_items)} news items")
         return news_items
     
     def get_source_name(self) -> str:
@@ -126,6 +133,6 @@ class FinnhubNewsSource(NewsSource):
         return self.fetch_news(hours_back=hours_back)
 
 
-def create_finnhub_source(api_key: str = None) -> FinnhubNewsSource:
+def create_finnhub_source(api_key: Optional[str] = None) -> FinnhubNewsSource:
     """Factory function to create Finnhub news source"""
     return FinnhubNewsSource(api_key) 

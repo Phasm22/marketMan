@@ -76,6 +76,11 @@ MarketMan processes news through several stages:
 1. **Collection** - Gathers news from multiple sources (Finnhub, NewsAPI, NewData)
 2. **Filtering** - Removes irrelevant content using keywords and relevance scoring
 3. **Batching** - Groups related news for efficient processing
+
+   The system uses a hybrid batching approach:
+   - Batches are finalized and processed immediately if they reach the maximum batch size.
+   - Batches are also finalized if they have at least the minimum batch size and have been waiting longer than the configured max wait time.
+   - At the end of each news cycle, any remaining pending batches that meet the minimum batch size are finalized and processed, ensuring no news is left unprocessed. This guarantees all accepted news is processed promptly.
 4. **AI Analysis** - Uses GPT-4 to analyze sentiment and generate signals
 5. **Validation** - Cross-references signals across sources
 6. **Output** - Generates actionable trading signals
@@ -159,7 +164,7 @@ risk:
 news_ingestion:
   max_daily_headlines: 50       # Maximum headlines per day
   max_daily_ai_calls: 75        # Maximum AI API calls
-  min_relevance_score: 0.15     # Minimum relevance threshold
+  min_relevance_score: 0.05     # Minimum relevance threshold
 ```
 
 #### Alerts

@@ -15,12 +15,15 @@ logger = logging.getLogger(__name__)
 class NewDataSource(NewsSource):
     """NewData financial news source"""
     
-    def __init__(self, api_key: str = None):
+    def __init__(self, api_key: str = None, config: dict = None):
         if not api_key:
             api_key = os.getenv("NEWS_DATA_KEY")
         
         if not api_key:
             raise ValueError("NewData API key is required")
+        
+        self.config_dict = config or {}
+        self.per_source_limit = self.config_dict.get('news_ingestion', {}).get('per_source_limit', 100)
         
         config = NewsSourceConfig(
             api_key=api_key,
@@ -37,6 +40,53 @@ class NewDataSource(NewsSource):
         self.session.headers.update({
             'Authorization': f'Bearer {api_key}'
         })
+    
+    def _parse_article(self, article: dict, is_market: bool = False) -> Optional[RawNewsItem]:
+        """Helper to parse a single article dict into RawNewsItem, with robust date handling."""
+        try:
+            if is_market:
+                published_str = article.get('published_at', '')
+                published_at = None
+                if published_str:
+                    try:
+                        published_at = datetime.fromisoformat(published_str.replace('Z', '+00:00'))
+                    except Exception as e:
+                        logger.warning(f"⚠️ NewData: ISO date parse failed for '{published_str}': {e}")
+                        published_at = datetime.now()
+                else:
+                    published_at = datetime.now()
+                title = article.get('title', '')
+                content = article.get('summary', '')
+                source = article.get('source', 'NewData')
+                url = article.get('url', '')
+            else:
+                published_str = article.get('pubDate', '')
+                if published_str:
+                    try:
+                        published_at = datetime.strptime(published_str, '%Y-%m-%d %H:%M:%S')
+                    except ValueError:
+                        logger.warning(f"⚠️ NewData: pubDate parse failed for '{published_str}', using now().")
+                        published_at = datetime.now()
+                else:
+                    published_at = datetime.now()
+                title = article.get('title', '')
+                content = article.get('description', '') or article.get('content', '')
+                source = article.get('source_name', 'NewData')
+                url = article.get('link', '')
+            # Skip articles with no content or if content is restricted
+            if not title or not content or content == "ONLY AVAILABLE IN PAID PLANS":
+                return None
+            return RawNewsItem(
+                title=title,
+                content=content,
+                source=source,
+                url=url,
+                published_at=published_at,
+                raw_data=article
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ Error parsing NewData article: {e}")
+            return None
     
     def fetch_news(self, query: str = None, tickers: List[str] = None, 
                    hours_back: int = 24) -> List[RawNewsItem]:
@@ -80,43 +130,11 @@ class NewDataSource(NewsSource):
         articles = response_data.get('results', [])
         
         for article in articles:
-            try:
-                # Parse published date
-                published_str = article.get('pubDate', '')
-                if published_str:
-                    # Handle format: "2025-06-28 07:32:00"
-                    try:
-                        published_at = datetime.strptime(published_str, '%Y-%m-%d %H:%M:%S')
-                    except ValueError:
-                        published_at = datetime.now()
-                else:
-                    published_at = datetime.now()
-                
-                # Extract content
-                title = article.get('title', '')
-                content = article.get('description', '') or article.get('content', '')
-                source = article.get('source_name', 'NewData')
-                url = article.get('link', '')
-                
-                # Skip articles with no content or if content is restricted
-                if not title or not content or content == "ONLY AVAILABLE IN PAID PLANS":
-                    continue
-                
-                # Create RawNewsItem
-                news_item = RawNewsItem(
-                    title=title,
-                    content=content,
-                    source=source,
-                    url=url,
-                    published_at=published_at,
-                    raw_data=article
-                )
-                
+            news_item = self._parse_article(article, is_market=False)
+            if news_item:
                 news_items.append(news_item)
-                
-            except Exception as e:
-                logger.warning(f"⚠️ Error parsing NewData article: {e}")
-                continue
+            if len(news_items) >= self.per_source_limit:
+                break
         
         logger.info(f"📰 NewData: fetched {len(news_items)} news items")
         return news_items
@@ -128,7 +146,8 @@ class NewDataSource(NewsSource):
         """Fetch general market news"""
         params = {
             'category': 'market',
-            'limit': 20
+            'limit': 20,
+            'apikey': self.config.api_key  # Ensure API key is always included
         }
         
         url = f"{self.config.base_url}/news"
@@ -137,32 +156,20 @@ class NewDataSource(NewsSource):
         if not response_data:
             return []
         
+        # Check for status field for consistency
+        if response_data.get('status') and response_data.get('status') != 'success':
+            logger.warning(f"⚠️ NewData market API error: {response_data}")
+            return []
+        
         news_items = []
         articles = response_data.get('data', [])
         
         for article in articles:
-            try:
-                published_str = article.get('published_at', '')
-                if published_str:
-                    published_at = datetime.fromisoformat(published_str.replace('Z', '+00:00'))
-                else:
-                    published_at = datetime.now()
-                
-                news_item = RawNewsItem(
-                    title=article.get('title', ''),
-                    content=article.get('summary', ''),
-                    source=article.get('source', 'NewData'),
-                    url=article.get('url', ''),
-                    published_at=published_at,
-                    raw_data=article
-                )
-                
+            news_item = self._parse_article(article, is_market=True)
+            if news_item:
                 news_items.append(news_item)
-                
-            except Exception as e:
-                logger.warning(f"⚠️ Error parsing NewData market article: {e}")
-                continue
         
+        logger.info(f"📰 NewData: fetched {len(news_items)} market news items")
         return news_items
 
 

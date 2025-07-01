@@ -11,8 +11,11 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 import hashlib
 import logging
+import time
 
 from ..database.db_manager import alert_batch_db
+from src.core.utils.config_loader import get_config
+import pytz
 
 try:
     from ...integrations.pushover_utils import send_pushover_notification
@@ -35,12 +38,18 @@ class PendingAlert:
     reasoning: str
     etfs: List[str]
     sector: str
-    article_url: str
-    timestamp: datetime
-    search_term: str
-    alert_id: str = None
+    article_url: str = ""
+    timestamp: datetime = datetime.now()
+    search_term: str = ""
+    alert_id: str = ""
 
     def __post_init__(self):
+        if self.article_url is None:
+            self.article_url = ""
+        if self.search_term is None:
+            self.search_term = ""
+        if self.alert_id is None:
+            self.alert_id = ""
         if not self.alert_id:
             # Generate unique ID based on content
             content = f"{self.title}{self.reasoning}{self.timestamp.isoformat()}"
@@ -109,15 +118,15 @@ class AlertBatcher:
                         continue
 
                     alert = PendingAlert(
-                        alert_id=content["alert_id"],
+                        alert_id=str(content.get("alert_id", "") or ""),
                         signal=content["signal"],
                         confidence=content["confidence"],
                         title=content["title"],
                         reasoning=content["reasoning"],
                         etfs=content["etfs"],
                         sector=content["sector"],
-                        article_url=content.get("article_url", ""),
-                        search_term=content.get("search_term", ""),
+                        article_url=str(content.get("article_url", "") or ""),
+                        search_term=str(content.get("search_term", "") or ""),
                         timestamp=datetime.fromisoformat(db_alert["timestamp"]),
                     )
                     alerts.append(alert)
@@ -198,27 +207,28 @@ class AlertBatcher:
         if not alerts:
             return ""
 
+        config = get_config().config if callable(get_config) else {}
+        sector_map = config.get('sector_mappings', {})
+        conviction_tiers = config.get('conviction_tiers', {'high': 9, 'moderate': 7, 'low': 5})
+        include_moderate = config.get('reporting', {}).get('include_moderate_positions', True)
+        timezone = pytz.timezone(config.get('default_timezone', 'America/New_York'))
+
         if len(alerts) == 1 and strategy == BatchStrategy.IMMEDIATE:
-            # Single alert - use existing format
             alert = alerts[0]
             signal_indicator = {
                 "Bullish": "↗ BULLISH",
                 "Bearish": "↘ BEARISH",
                 "Neutral": "→ NEUTRAL",
             }.get(alert.signal, "→ UNKNOWN")
-
-            return f"""{signal_indicator} Signal ({alert.confidence}/10)
-
-{alert.title[:80]}{'...' if len(alert.title) > 80 else ''}
-
-Reason: {alert.reasoning}
-
-ETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
+            sector_display = sector_map.get(alert.sector, alert.sector)
+            ts = alert.timestamp.astimezone(timezone).strftime('%Y-%m-%d %H:%M %Z')
+            return f"""{signal_indicator} Signal ({alert.confidence}/10)\n\n{alert.title[:80]}{'...' if len(alert.title) > 80 else ''}\n\nReason: {alert.reasoning}\n\nSector: {sector_display}\nTime: {ts}\nETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
 
         # Multi-alert batch summary
         sectors = {}
         total_signals = {"Bullish": 0, "Bearish": 0, "Neutral": 0}
         high_conf_alerts = []
+        moderate_conf_alerts = []
 
         for alert in alerts:
             # Group by sector
@@ -229,9 +239,11 @@ ETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
             # Count signals
             total_signals[alert.signal] = total_signals.get(alert.signal, 0) + 1
 
-            # Track high confidence
-            if alert.confidence >= 8:
+            # Track high/moderate confidence
+            if alert.confidence >= conviction_tiers.get('high', 9):
                 high_conf_alerts.append(alert)
+            elif alert.confidence >= conviction_tiers.get('moderate', 7):
+                moderate_conf_alerts.append(alert)
 
         # Build summary
         if strategy == BatchStrategy.DAILY_DIGEST:
@@ -243,35 +255,45 @@ ETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
         signal_parts = []
         for signal, count in total_signals.items():
             if count > 0:
-                # Handle mixed signals
-                if "|" in signal:
-                    primary_signal = signal.split("|")[0]  # Take first signal
-                else:
-                    primary_signal = signal
-
+                primary_signal = signal.split("|")[0] if "|" in signal else signal
                 emoji = {"Bullish": "↗", "Bearish": "↘", "Neutral": "→"}.get(primary_signal, "→")
                 signal_parts.append(f"{emoji} {count} {signal}")
         summary += f"Signals: {' | '.join(signal_parts)}\n\n"
 
-        # High confidence highlights
+        # High confidence
         if high_conf_alerts:
             summary += "🔥 High Confidence Alerts:\n"
             for alert in high_conf_alerts[:3]:  # Top 3
-                summary += f"• {alert.signal} {alert.sector}: {alert.title}\n"
+                sector_display = sector_map.get(alert.sector, alert.sector)
+                summary += f"• {alert.signal} {sector_display}: {alert.title}\n"
             if len(high_conf_alerts) > 3:
                 summary += f"• +{len(high_conf_alerts)-3} more high confidence signals\n"
             summary += "\n"
 
+        # Moderate confidence (optional)
+        if include_moderate and moderate_conf_alerts:
+            summary += "🟡 Moderate Confidence Alerts:\n"
+            for alert in moderate_conf_alerts[:3]:
+                sector_display = sector_map.get(alert.sector, alert.sector)
+                summary += f"• {alert.signal} {sector_display}: {alert.title}\n"
+            if len(moderate_conf_alerts) > 3:
+                summary += f"• +{len(moderate_conf_alerts)-3} more moderate confidence signals\n"
+            summary += "\n"
+
         # Sector breakdown
-        if len(sectors) > 1:
-            summary += "📈 Sectors Active:\n"
+        if len(sectors) > 0:
+            if len(sectors) == 1:
+                summary += "📈 Sector Active:\n"
+            elif len(sectors) > 1:
+                summary += "📈 Sectors Active:\n"
             for sector, sector_alerts in sorted(
                 sectors.items(), key=lambda x: len(x[1]), reverse=True
             ):
                 etfs = set()
                 for alert in sector_alerts:
                     etfs.update(alert.etfs[:2])  # Top 2 ETFs per alert
-                summary += f"• {sector}: {', '.join(list(etfs)[:3])}\n"
+                sector_display = sector_map.get(sector, sector)
+                summary += f"• {sector_display}: {', '.join(list(etfs)[:3])}\n"
 
         return summary.strip()
 
@@ -302,21 +324,31 @@ ETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
         best_alert = max(alerts, key=lambda a: a.confidence)
         notion_url = best_alert.article_url if best_alert.article_url else None
 
-        # Send notification
-        success = send_pushover_notification(
-            message=summary,
-            title=title,
-            priority=priority,
-            url=notion_url,
-            url_title="View Analysis" if notion_url else None,
-        )
+        # Send notification with retry logic
+        max_retries = 3
+        retry_delay = 2  # seconds
+        for attempt in range(1, max_retries + 1):
+            success = send_pushover_notification(
+                message=summary,
+                title=title,
+                priority=priority,
+                url=notion_url,
+                url_title="View Analysis" if notion_url else None,
+            )
+            if success:
+                break
+            else:
+                logger.warning(f"Pushover notification failed (attempt {attempt}/{max_retries}). Retrying in {retry_delay}s...")
+                time.sleep(retry_delay)
+        else:
+            logger.error("Pushover notification failed after all retries.")
 
         if success:
             # Mark batch as sent using database abstraction
             batch_id = hashlib.md5(
                 f"{datetime.now().isoformat()}{strategy.value}".encode()
             ).hexdigest()[:12]
-            alert_ids = [alert.alert_id for alert in alerts]
+            alert_ids = [str(alert.alert_id or "") for alert in alerts]
 
             # Record the sent batch
             batch_data = {
@@ -333,8 +365,9 @@ ETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
                 
                 # Remove sent alerts from pending
                 for alert_id in alert_ids:
-                    self.db.delete_alert(alert_id)
-                    
+                    if alert_id:
+                        self.db.delete_alert(str(alert_id))
+                
             except Exception as e:
                 logger.error(f"Error recording batch: {e}")
 
@@ -384,7 +417,7 @@ def queue_alert(
     reasoning: str,
     etfs: List[str],
     sector: str,
-    article_url: str = None,
+    article_url: str = "",
     search_term: str = "",
     strategy: BatchStrategy = BatchStrategy.SMART_BATCH,
 ) -> str:
@@ -400,13 +433,13 @@ def queue_alert(
         reasoning=reasoning,
         etfs=etfs,
         sector=sector,
-        article_url=article_url,
-        search_term=search_term,
+        article_url=str(article_url or ""),
+        search_term=str(search_term or ""),
         timestamp=datetime.now(),
     )
 
     batcher.add_alert(alert, strategy)
-    return alert.alert_id
+    return str(alert.alert_id or "")
 
 
 def process_alert_queue(fallback_warning: str = None) -> Dict[str, bool]:

@@ -1,0 +1,5 @@
+{
+  "SPY": {"price": 450.25, "change_pct": 0.5, "name": "SPDR S&P 500 ETF", "volume": 5000000},
+  "QQQ": {"price": 380.75, "change_pct": 0.8, "name": "Invesco QQQ Trust", "volume": 3000000},
+  "ICLN": {"price": 22.45, "change_pct": 2.3, "name": "iShares Global Clean Energy", "volume": 800000}
+} 

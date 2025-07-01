@@ -225,7 +225,7 @@ def create_consolidated_signal_report(all_analyses, session_timestamp):
             search_terms.add(search_term)
 
     # Create consolidated report with Mountain Time
-    mountain_tz = pytz.timezone("America/Denver")
+    mountain_tz = pytz.timezone("America/New_York")
     local_time = datetime.now(mountain_tz)
 
     # Calculate adaptive confidence from actual positions
