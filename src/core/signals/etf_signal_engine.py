@@ -60,21 +60,9 @@ class ContextWrapper(dict):
 
 def apply_custom_signal_rules(analysis_result, news_batch, technicals, pattern_results, config, context):
     """
-    Applies custom signal rules and annotates the analysis_result with:
-      - speculative: True if downgraded due to indirect/thematic news
-      - needs_confirmation: True if technicals/news are borderline and only one source
-      - confidence_capped: True if confidence was capped due to quality/confirmation rules
-      - custom_reasoning: Human-readable explanation of all adjustments
-      - signal_schema_version: 2 (for schema tracking)
-    Handles combinations of these flags for robust downstream logic.
+    Applies custom signal rules and annotates the analysis_result with actionable v3 fields only.
     """
     custom_rules = get_custom_rules(config)
-    # Initialize flags
-    analysis_result['speculative'] = False
-    analysis_result['needs_confirmation'] = False
-    analysis_result['confidence_capped'] = False
-    analysis_result['custom_reasoning'] = ''
-    analysis_result['signal_schema_version'] = 2
     reasoning_notes = []
     # Rule 1: Neutral RSI + mild MACD + vague news
     def is_neutral_rsi(tech):
@@ -90,14 +78,12 @@ def apply_custom_signal_rules(analysis_result, news_batch, technicals, pattern_r
     def has_price_or_volume_confirmation(tech):
         return tech.get('price_move', 0) > 1 or tech.get('volume_spike', False)
     def is_thematic_but_indirect(batch, analysis):
-        # Placeholder: check if any mentioned company is not in ETF holdings (requires ETF holdings data)
         return analysis.get('theme_category', '').lower() == 'ai/robotics' and 'meta' in batch.get_combined_text().lower() and not any('meta' in etf.lower() for etf in analysis.get('affected_etfs', []))
     def is_volatility_etf(analysis):
         return any(etf in custom_rules['volatility_etfs'] for etf in analysis.get('affected_etfs', []))
     def is_single_bearish_news(batch):
         return batch.batch_size == 1 and 'bearish' in batch.get_combined_text().lower()
     def has_implied_vol_confirmation(tech, patterns):
-        # Placeholder: check context for implied vol
         return context.get('implied_vol_confirmed', False)
     def is_climate_etf(analysis):
         return 'climate' in analysis.get('theme_category', '').lower() or 'clean' in analysis.get('theme_category', '').lower()
@@ -123,7 +109,6 @@ def apply_custom_signal_rules(analysis_result, news_batch, technicals, pattern_r
         penalty = custom_rules.get('indirect_news_confidence_penalty', 2)
         old_conf = analysis_result['confidence']
         analysis_result['confidence'] = max(1, analysis_result['confidence'] - penalty)
-        analysis_result['speculative'] = True
         note = f"Speculative: AI news is outside ETF scope (penalty -{penalty}, {old_conf}->{analysis_result['confidence']})"
         reasoning_notes.append(note)
         logger.info(f"[SignalRule] {note}")
@@ -143,9 +128,6 @@ def apply_custom_signal_rules(analysis_result, news_batch, technicals, pattern_r
             note = "Downgraded to neutral: climate news lacks concrete policy/funding."
             reasoning_notes.append(note)
             logger.info(f"[SignalRule] {note}")
-    # Compose reasoning
-    if reasoning_notes:
-        analysis_result['custom_reasoning'] = ' | '.join(reasoning_notes)
     return analysis_result
 
 def generate_tactical_explanation(analysis_result, article_title):
@@ -212,9 +194,8 @@ Use proper financial terminology: entry/exit levels, position sizing, risk-rewar
         return None
 
 
-def build_analysis_prompt(headline, summary, snippet="", etf_prices=None, contextual_insight=None):
-    """Build comprehensive analysis prompt for MarketMan AI"""
-    # Build comprehensive ETF price context if available
+def build_analysis_prompt(headline, summary, snippet="", etf_prices=None, contextual_insight=None, technicals=None, pattern_results=None, risk_config=None):
+    """Build actionable analysis prompt for a single news item, with price anchors, technicals, and new output fields."""
     price_context = ""
     if etf_prices:
         price_context = "\n\n📊 LIVE MARKET SNAPSHOT:\n"
@@ -223,50 +204,98 @@ def build_analysis_prompt(headline, summary, snippet="", etf_prices=None, contex
             trend_emoji = "📈" if data["change_pct"] > 0 else "📉" if data["change_pct"] < 0 else "➖"
             price_context += f"• {symbol} ({data.get('name', symbol)}): ${data['price']} ({change_sign}{data['change_pct']}%) {trend_emoji}\n"
         price_context += "\nUse this real-time data to inform your strategic analysis.\n"
-
+    technical_context = ""
+    if technicals:
+        technical_context = "\n📈 TECHNICAL INDICATORS:\n"
+        for ticker, tech_data in technicals.items():
+            technical_context += f"• {ticker}: RSI={tech_data.get('rsi', 'N/A')}, MACD={tech_data.get('macd', 'N/A')}, BB={tech_data.get('bollinger', 'N/A')}\n"
+        technical_context += "\nUse these technical indicators to assess momentum and support/resistance levels.\n"
+    pattern_context = ""
+    if pattern_results:
+        pattern_context = f"\n🔎 PATTERN RECOGNITION:\n• Patterns Detected: {pattern_results.get('patterns_detected', 0)}\n"
+        if pattern_results.get('patterns'):
+            for p in pattern_results['patterns']:
+                pattern_context += f"  - {p}\n"
+        else:
+            pattern_context += "  (No patterns detected)\n"
+    if risk_config is None:
+        risk_config = {}
+    max_position_size_percent = risk_config.get('max_position_size_percent', 2.0)
+    max_kelly_fraction = risk_config.get('max_kelly_fraction', 0.25)
     return f"""
-You are MarketMan — a tactical ETF strategist focused on identifying high-momentum opportunities in defense, AI, energy, clean tech, and volatility hedging. Your job is to turn breaking market intelligence into ETF positioning signals.
+You are MarketMan — a tactical ETF strategist focused on identifying high-momentum opportunities in defense, AI, energy, clean tech, and volatility hedging. Your job is to analyze a SINGLE news item and identify the most actionable ETF opportunity.
 
-**CRITICAL ETF SELECTION RULES:**
-• Only recommend specialized thematic ETFs (BOTZ, ITA, ICLN, URA, etc.)
-• AVOID broad-market funds (XLK, QQQ, VTI, SPY) unless no pure-play alternatives exist
-• Focus on ETFs with <$5B AUM that offer targeted sector exposure
-• Prioritize ETFs that could appear in multiple analyses today for momentum confirmation
+**CRITICAL OUTPUT FIELDS:**
+Return a JSON object with the following fields:
+- reasoning: Bullet-pointed, data-driven justification for the signal (no narrative). Format as:
+  • [Key data point or insight]
+  • [Supporting evidence or flow]
+  • [Market context or catalyst]
+- if_then_scenario: "If [market/volume/price/flow], then [confirm/refute signal]" logic
+- contradictory_signals: Risks, opposing news, or macro factors that could flip the thesis
+- uncertainty_metric: "Confidence: X, but…" phrasing, including source/quality/volatility context
+- price_anchors: Dict with ETF price context: {{"prev_close": X, "pre_market": Y, "5d_trend": "Z%", "volume": "N"}}
+- position_risk_bracket: "Position sizing: conservative / aggressive" based on volatility and risk config
+- signal: "Bullish", "Bearish", or "Neutral"
+- confidence: 1-10 scale
+- affected_etfs: List of relevant ETF tickers
+- sector: Primary market sector
+- market_impact: Expected market reaction
+- risk_factors: Key risks to monitor
+- technical_notes: Technical analysis insights
+- pattern_notes: Pattern recognition insights
 
-Analyze the following news and market context to determine if there's an actionable ETF play:
+**CONTEXT:**
+- ETF price anchors: {price_context}
+- Technical indicators: {technical_context}
+- Pattern recognition: {pattern_context}
+- News headline: {headline}
+- News summary: {summary}
+- News snippet: {snippet}
+- Contextual insight: {contextual_insight or 'None'}
+- Risk config: max_position_size_percent={max_position_size_percent}, max_kelly_fraction={max_kelly_fraction}
 
-🧠 PATTERN MEMORY:
-{contextual_insight or 'None'}
+**SINGLE NEWS ANALYSIS TASK:**
+Analyze this news item to determine if there's a STRONG, ACTIONABLE ETF opportunity. Output the JSON object as described above.
 
-📊 MARKET SNAPSHOT:
-{price_context or 'No price data'}
-
-📰 ARTICLE:
-Title: "{headline}"
-Summary: "{summary}"
-Additional Context: "{snippet}"
-
-If this content is NOT relevant to thematic ETF investing, return:
-{{"relevance": "not_financial", "confidence": 0}}
-
-Otherwise, return:
+**EXAMPLE:**
 {{
   "relevance": "financial",
-  "sector": "Defense|AI|CleanTech|Volatility|Uranium|Broad Market",
-  "signal": "Bullish|Bearish|Neutral",
-  "confidence": 1-10,
-  "affected_etfs": ["ITA", "XAR", "ICLN", "BOTZ", "URA", etc],
-  "reasoning": "Short rationale focusing on specialized ETF opportunity",
-  "market_impact": "Brief on specialized ETF sector strategy",
-  "price_action": "Expected movements in focused ETF universe",
-  "strategic_advice": "Tactical recommendations for pure-play positioning",
-  "coaching_tone": "Professional insight with specialized ETF momentum focus",
-  "risk_factors": "Key risks specific to thematic/sector exposure",
-  "opportunity_thesis": "Why specialized ETFs outperform broad market in this scenario",
-  "theme_category": "AI/Robotics|Defense/Aerospace|CleanTech/Climate|Volatility/Hedge|Nuclear/Uranium"
+  "sector": "AI/Robotics",
+  "signal": "Bullish",
+  "confidence": 8,
+  "affected_etfs": ["BOTZ"],
+  "reasoning": [
+    "Nvidia earnings beat, AI chip demand surging",
+    "BOTZ ETF holdings: Nvidia top 3 weight",
+    "Volume spike: BOTZ 2.2x 5-day average"
+  ],
+  "if_then_scenario": "If BOTZ closes above $30 with >2x average volume, confirm bullish thesis.",
+  "contradictory_signals": "If chip export restrictions increase, AI sector could face headwinds.",
+  "uncertainty_metric": "Confidence 8, but headline-driven and high volatility week.",
+  "price_anchors": {{
+    "BOTZ": {{
+      "prev_close": 29.80,
+      "pre_market": 30.40,
+      "5d_trend": "+3.2%",
+      "volume": "2.2M (2.2x avg)"
+    }}
+  }},
+  "position_risk_bracket": "Position sizing: moderate (sector volatility, strong catalyst)",
+  "risk_factors": "AI chip supply chain risk, regulatory uncertainty",
+  "market_impact": "High-conviction AI ETF setup",
+  "theme_category": "AI/Robotics"
 }}
 
-**REMEMBER:** Favor specialized, pure-play ETFs over broad market funds. Only include broad-market ETFs if truly no specialized alternatives exist for the theme.
+**REMEMBER:** 
+- Use only bullet points for reasoning.
+- Always provide an if/then scenario and contradictory signals.
+- Always output the position risk bracket based on volatility and config.
+- Always surface the uncertainty metric in trader-friendly language.
+- Price anchors must be present for each ETF.
+- If any field is not applicable, use an empty string or array, but do not omit it.
+
+Return ONLY the JSON object, nothing else.
 """
 
 
@@ -314,6 +343,9 @@ def analyze_thematic_etf_news(
     rsi=None,
     macd=None,
     bollinger=None,
+    technicals=None,
+    pattern_results=None,
+    risk_config=None,
 ):
     """
     Analyze news for thematic ETF opportunities using MarketMan AI.
@@ -329,7 +361,16 @@ def analyze_thematic_etf_news(
     else:
         logger.info(f"🤖 Analyzing: {headline[:60]}...")
 
-    prompt = build_analysis_prompt(headline, summary, snippet, etf_prices, contextual_insight)
+    prompt = build_analysis_prompt(
+        headline,
+        summary,
+        snippet,
+        etf_prices,
+        contextual_insight,
+        technicals,
+        pattern_results,
+        risk_config
+    )
 
     try:
         response = client.chat.completions.create(
@@ -350,45 +391,22 @@ def analyze_thematic_etf_news(
         
         # Try to extract JSON from the response (handle extra text)
         try:
-            # Find the first { and last } to extract JSON
             start = result.find('{')
             end = result.rfind('}') + 1
             if start != -1 and end != 0:
                 json_str = result[start:end]
                 json_result = json.loads(json_str)
             else:
-                # Fallback: try to parse the whole thing
                 json_result = json.loads(result)
-            
-            # Apply hard rules to individual analysis
-            if not _validate_individual_analysis(json_result):
-                logger.info(f"🚫 Individual analysis failed validation")
-                return None
-            
-            # Add metadata for individual article analysis
-            json_result["analysis_timestamp"] = datetime.now().isoformat()
-            json_result["source_headline"] = headline
-            json_result["source_summary"] = summary
-            
-            # Store in memory if available
-            if memory:
-                try:
-                    memory.store_signal(json_result, f"Article: {headline[:50]}...")
-                    logger.debug("💾 Individual analysis stored in MarketMemory")
-                except Exception as mem_error:
-                    logger.warning(f"⚠️ Failed to store individual analysis in memory: {mem_error}")
-            
-            logger.info(f"✅ Individual analysis complete: {json_result.get('signal', 'Unknown')} signal, confidence {json_result.get('confidence', 0)}")
+            # (Optionally) apply custom rules, validation, etc. here
             return json_result
-            
         except json.JSONDecodeError as e:
-            logger.error(f"❌ Failed to parse individual analysis response as JSON: {e}")
+            logger.error(f"❌ Failed to parse analysis response as JSON: {e}")
             if DEBUG_MODE:
                 logger.error(f"Raw response: {result}")
             return None
-            
     except Exception as e:
-        logger.error(f"❌ Error calling OpenAI API for individual analysis: {e}")
+        logger.error(f"❌ Error calling OpenAI API for single news analysis: {e}")
         return None
 
 
@@ -439,12 +457,12 @@ def categorize_etfs_by_sector(etfs):
     return focused_etfs, primary_sector
 
 
-def analyze_news_batch(news_batch, etf_prices=None, contextual_insight=None, memory=None, technicals=None, pattern_results=None, context=None):
+def analyze_news_batch(news_batch, etf_prices=None, contextual_insight=None, memory=None, technicals=None, pattern_results=None, context=None, risk_config=None):
     if not news_batch or not news_batch.items:
         logger.warning("⚠️ Empty news batch provided")
         return None
     logger.info(f"🤖 Analyzing news batch: {news_batch.get_summary()}")
-    prompt = build_batch_analysis_prompt(news_batch, etf_prices, contextual_insight, technicals, pattern_results)
+    prompt = build_batch_analysis_prompt(news_batch, etf_prices, contextual_insight, technicals, pattern_results, risk_config)
     try:
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -505,8 +523,8 @@ def analyze_news_batch(news_batch, etf_prices=None, contextual_insight=None, mem
         return None
 
 
-def build_batch_analysis_prompt(news_batch, etf_prices=None, contextual_insight=None, technicals=None, pattern_results=None):
-    """Build comprehensive analysis prompt for a batch of news items with multi-source validation, technical analysis, and pattern recognition"""
+def build_batch_analysis_prompt(news_batch, etf_prices=None, contextual_insight=None, technicals=None, pattern_results=None, risk_config=None):
+    """Build comprehensive analysis prompt for a batch of news items with multi-source validation, technical analysis, and pattern recognition, using the new actionable output schema."""
     # Build ETF price context
     price_context = ""
     if etf_prices:
@@ -566,91 +584,91 @@ def build_batch_analysis_prompt(news_batch, etf_prices=None, contextual_insight=
     
     if news_batch.contradiction_flag:
         validation_context += "• ⚠️ CONTRADICTION DETECTED: Sources have opposing views - analyze carefully\n"
-    
+
+    # Risk config context
+    if risk_config is None:
+        risk_config = {}
+    max_position_size_percent = risk_config.get('max_position_size_percent', 2.0)
+    max_kelly_fraction = risk_config.get('max_kelly_fraction', 0.25)
+
     return f"""
 You are MarketMan — a tactical ETF strategist focused on identifying high-momentum opportunities in defense, AI, energy, clean tech, and volatility hedging. Your job is to analyze a BATCH of related news items and identify the strongest ETF opportunities.
 
-**CRITICAL ETF SELECTION RULES:**
-• Only recommend specialized thematic ETFs (BOTZ, ITA, ICLN, URA, etc.)
-• AVOID broad-market funds (XLK, QQQ, VTI, SPY) unless no pure-play alternatives exist
-• Focus on ETFs with <$5B AUM that offer targeted sector exposure
-• Prioritize ETFs that could appear in multiple analyses today for momentum confirmation
+**CRITICAL OUTPUT FIELDS:**
+Return a JSON object with the following fields:
+- reasoning: Bullet-pointed, data-driven justification for the signal (no narrative). Format as:
+  • [Key data point or insight]
+  • [Supporting evidence or flow]
+  • [Market context or catalyst]
+- if_then_scenario: "If [market/volume/price/flow], then [confirm/refute signal]" logic
+- contradictory_signals: Risks, opposing news, or macro factors that could flip the thesis
+- uncertainty_metric: "Confidence: X, but…" phrasing, including source/quality/volatility context
+- price_anchors: Dict with ETF price context: {{"prev_close": X, "pre_market": Y, "5d_trend": "Z%", "volume": "N"}}
+- position_risk_bracket: "Position sizing: conservative / aggressive" based on volatility and risk config
+- signal: "Bullish", "Bearish", or "Neutral"
+- confidence: 1-10 scale
+- affected_etfs: List of relevant ETF tickers
+- sector: Primary market sector
+- market_impact: Expected market reaction
+- risk_factors: Key risks to monitor
+- technical_notes: Technical analysis insights
+- pattern_notes: Pattern recognition insights
 
-**BATCH ANALYSIS APPROACH:**
-• Look for CONFIRMATION across multiple headlines (stronger signal)
-• Identify EMERGING TRENDS from related news items
-• Focus on the MOST ACTIONABLE opportunities in the batch
-• Consider the COMBINED IMPACT of all headlines on specific sectors
-• Pay attention to SOURCE QUALITY and AGREEMENT
-• Factor in TECHNICAL INDICATORS for momentum confirmation
-• Consider PATTERN RECOGNITION for additional signal confirmation
-
-🧠 PATTERN MEMORY:
-{contextual_insight or 'None'}
-
-📊 MARKET SNAPSHOT:
-{price_context or 'No price data'}
-
-{technical_context}
-{pattern_context}
-{validation_context}
-
-📰 NEWS BATCH ({news_batch.batch_size} items):
-{news_content}
+**CONTEXT:**
+- ETF price anchors: {price_context}
+- Technical indicators: {technical_context}
+- Pattern recognition: {pattern_context}
+- Multi-source validation: {validation_context}
+- News batch: {news_content}
+- Risk config: max_position_size_percent={max_position_size_percent}, max_kelly_fraction={max_kelly_fraction}
 
 **BATCH ANALYSIS TASK:**
-Analyze this batch of related news items to determine if there's a STRONG, ACTIONABLE ETF opportunity. Look for:
-1. **Confirmation patterns** - multiple headlines supporting the same thesis
-2. **Emerging trends** - new developments that could drive sector momentum
-3. **Specific catalysts** - concrete events that could move ETF prices
-4. **Sector focus** - which specialized ETF sectors are most affected
-5. **Source reliability** - how much to trust the signal based on source quality
-6. **Technical confirmation** - how technical indicators support or contradict the news signal
-7. **Pattern recognition** - do any classic chart patterns support or contradict the signal?
+Analyze this batch of related news items to determine if there's a STRONG, ACTIONABLE ETF opportunity. Output the JSON object as described above.
 
-**SIGNAL QUALITY CONSIDERATIONS:**
-• If batch quality score < 0.5, be more conservative with confidence
-• If contradictions detected, analyze both sides and explain uncertainty
-• If high source agreement, you can be more confident in the signal
-• If low sentiment consistency, consider the signal less reliable
-• If technical indicators align with news sentiment, increase confidence
-• If technical indicators contradict news sentiment, explain the divergence
-• If pattern recognition supports the signal, increase confidence
-
-**IMPORTANT SIGNAL GUIDANCE:**
-• AVOID "Neutral" signals unless the news has absolutely no market implications
-• If there are ANY market implications (positive or negative), choose "Bullish" or "Bearish"
-• Be more confident (6-8) when there are clear sector-specific implications
-• Higher confidence (8-10) when multiple factors align (news + technical + patterns)
-• Lower confidence (5-7) when there are mixed signals but still actionable
-
-If this batch does NOT contain actionable ETF opportunities, return:
-{{"relevance": "not_financial", "confidence": 0}}
-
-Otherwise, return:
+**EXAMPLES:**
 {{
   "relevance": "financial",
-  "sector": "Defense|AI|CleanTech|Volatility|Uranium|Broad Market",
-  "signal": "Bullish|Bearish|Neutral",
-  "confidence": 1-10,
-  "affected_etfs": ["ITA", "XAR", "ICLN", "BOTZ", "URA", etc],
-  "reasoning": "Comprehensive analysis of the news batch and its ETF implications",
-  "market_impact": "Expected impact on specialized ETF sectors",
-  "price_action": "Expected movements in focused ETF universe",
-  "strategic_advice": "Tactical recommendations based on batch analysis",
-  "coaching_tone": "Professional insight with specialized ETF momentum focus",
-  "risk_factors": "Key risks specific to thematic/sector exposure",
-  "opportunity_thesis": "Why this batch creates a strong ETF opportunity",
-  "theme_category": "AI/Robotics|Defense/Aerospace|CleanTech/Climate|Volatility/Hedge|Nuclear/Uranium",
-  "batch_insights": "Key insights from analyzing multiple headlines together",
-  "confirmation_strength": "How strongly the batch confirms the signal (1-10)",
-  "source_quality_assessment": "Assessment of source reliability and agreement",
-  "signal_quality_score": "Overall signal quality based on batch metrics (1-10)",
-  "technical_confirmation": "How technical indicators support or contradict the signal",
-  "pattern_recognition": "Summary of any detected chart patterns and their impact on the signal"
+  "sector": "Defense",
+  "signal": "Bullish",
+  "confidence": 7,
+  "affected_etfs": ["ITA", "XAR"],
+  "reasoning": [
+    "Geopolitical tensions driving defense sector flows",
+    "Institutional volume in ITA/XAR > 2x average",
+    "Reuters, Bloomberg coverage aligns"
+  ],
+  "if_then_scenario": "If ITA volume > 2x 5-day average this week, confirm bullish thesis; if ceasefire headlines increase, reduce exposure.",
+  "contradictory_signals": "Ceasefire progress or defense budget cuts could reverse momentum.",
+  "uncertainty_metric": "Confidence 7, but headline-driven and source agreement only moderate.",
+  "price_anchors": {{
+    "ITA": {{
+      "prev_close": 125.80,
+      "pre_market": 126.40,
+      "5d_trend": "+2.1%",
+      "volume": "2.1M (1.8x avg)"
+    }},
+    "XAR": {{
+      "prev_close": 95.30,
+      "pre_market": 95.80,
+      "5d_trend": "+1.7%",
+      "volume": "1.2M (1.5x avg)"
+    }}
+  }},
+  "position_risk_bracket": "Position sizing: conservative (high volatility, sector headline risk)",
+  "risk_factors": "...",
+  "market_impact": "...",
+  "theme_category": "Defense/Aerospace"
 }}
 
-**REMEMBER:** This is a BATCH analysis - look for patterns and confirmation across multiple headlines. The signal should be stronger if multiple headlines support the same thesis. Consider source quality, agreement, technical indicators, and pattern recognition when determining confidence. Be decisive - if there are market implications, choose a direction rather than staying neutral.
+**REMEMBER:** 
+- Use only bullet points for reasoning.
+- Always provide an if/then scenario and contradictory signals.
+- Always output the position risk bracket based on volatility and config.
+- Always surface the uncertainty metric in trader-friendly language.
+- Price anchors must be present for each ETF.
+- If any field is not applicable, use an empty string or array, but do not omit it.
+
+Return ONLY the JSON object, nothing else.
 """
 
 

@@ -44,7 +44,7 @@ class PositionSizer:
         self.position_config = self.risk_config.get("position_sizing", {})
 
         # Get account size from config
-        account_cfg = self.config.config.get('account', {})
+        account_cfg = self.config.load_settings().get('account', {})
         self.account_size = account_cfg.get('account_size', 100000)
         if not isinstance(self.account_size, (int, float)) or self.account_size <= 0:
             logger.warning(f"Invalid or missing account_size in config, using default $100,000")
@@ -57,7 +57,7 @@ class PositionSizer:
         logger.info(f"Initialized position sizer with account size ${self.account_size:,.2f}")
 
     def calculate_kelly_size(
-        self, win_rate: float, avg_win: float, avg_loss: float, confidence: float = 1.0
+        self, win_rate: float, avg_win: float, avg_loss: float, price: float, confidence: float = 1.0
     ) -> PositionSizeResult:
         """
         Calculate position size using Kelly Criterion.
@@ -66,6 +66,7 @@ class PositionSizer:
             win_rate: Historical win rate (0.0 to 1.0)
             avg_win: Average winning trade amount
             avg_loss: Average losing trade amount
+            price: Current price per unit
             confidence: Confidence factor (0.0 to 1.0)
 
         Returns:
@@ -77,6 +78,10 @@ class PositionSizer:
 
         if avg_win <= 0 or avg_loss <= 0:
             logger.warning("Invalid average win/loss amounts")
+            return self._create_minimal_result("kelly")
+
+        if price <= 0:
+            logger.warning(f"Invalid price: {price}")
             return self._create_minimal_result("kelly")
 
         # Kelly formula: f = (bp - q) / b
@@ -93,15 +98,15 @@ class PositionSizer:
         kelly_fraction = max(kelly_fraction, 0)
 
         dollar_amount = self.account_size * kelly_fraction
-        quantity = int(dollar_amount / avg_win) if avg_win > 0 else 0
+        quantity = int(dollar_amount / price) if price > 0 else 0
 
         # Apply limits
         quantity = max(quantity, 1)
-        quantity = min(quantity, int(self.max_position_size / avg_win))
+        quantity = min(quantity, int(self.max_position_size / price))
 
         return PositionSizeResult(
             quantity=quantity,
-            dollar_amount=quantity * avg_win,
+            dollar_amount=quantity * price,
             risk_amount=dollar_amount,
             method="kelly",
             confidence=confidence,

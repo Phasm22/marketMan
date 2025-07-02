@@ -14,7 +14,7 @@ Complete guide to integrating MarketMan with Notion databases for signal trackin
 ## 🎯 Overview
 
 MarketMan integrates with Notion to automatically sync:
-- **Trading Signals** - AI-generated signals with analysis
+- **Trading Signals** - AI-generated signals with actionable analysis
 - **Trade Journal** - Entry/exit data and P&L tracking
 - **Performance Analytics** - Metrics and performance reports
 - **News Items** - Relevant news with sentiment analysis
@@ -47,22 +47,27 @@ MarketMan integrates with Notion to automatically sync:
 
 ### Step 2: Create Databases
 
-#### Signals Database
+#### Signals Database (v3 Schema)
 
 1. Create a new page in Notion
 2. Add a database with these properties:
 
 | Property Name | Type | Description |
 |---------------|------|-------------|
-| Signal Type | Select | Bullish, Bearish, Neutral |
-| Confidence | Number | 1-10 confidence score |
 | Title | Title | Signal title |
-| Reasoning | Text | Signal reasoning |
-| ETFs | Multi-select | Affected ETFs |
+| Signal | Select | Bullish, Bearish, Neutral |
+| Confidence | Number | 1-10 confidence score |
+| ETFs | Multi-select | Affected ETF tickers |
 | Sector | Select | Market sector |
-| Source | Text | News source |
 | Timestamp | Date | Signal timestamp |
-| Status | Select | Active, Closed, Expired |
+| Reasoning | Text | Signal reasoning (bullet-pointed) |
+| Status | Select | New, Reviewed, Acted On, Archived |
+| Journal Notes | Text | Optional manual notes |
+| If-Then Scenario | Text | Validation logic for signal |
+| Contradictory Signals | Text | Opposing signals/risks |
+| Uncertainty Metric | Text | Confidence with context |
+| Position Risk Bracket | Text | Position sizing guidance |
+| Price Anchors | Text | ETF price context |
 
 #### Trades Database
 
@@ -70,16 +75,14 @@ MarketMan integrates with Notion to automatically sync:
 
 | Property Name | Type | Description |
 |---------------|------|-------------|
-| Symbol | Title | Trading symbol |
-| Signal ID | Text | Associated signal |
-| Entry Price | Number | Entry price |
-| Exit Price | Number | Exit price |
+| Ticker | Title | Trading symbol |
+| Action | Select | BUY, SELL |
 | Quantity | Number | Number of shares |
-| Entry Date | Date | Entry timestamp |
-| Exit Date | Date | Exit timestamp |
-| P&L | Number | Realized P&L |
-| Status | Select | Open, Closed |
+| Price | Number | Trade price |
+| Trade Date | Date | Trade timestamp |
+| Trade Value | Number | Total trade value |
 | Notes | Text | Trade notes |
+| Status | Select | Open, Closed, Review |
 
 #### Performance Database
 
@@ -87,12 +90,10 @@ MarketMan integrates with Notion to automatically sync:
 
 | Property Name | Type | Description |
 |---------------|------|-------------|
-| Date | Date | Performance date |
+| Period | Title | Performance period |
 | Total Trades | Number | Number of trades |
 | Win Rate | Number | Win rate percentage |
 | Total P&L | Number | Total P&L |
-| Max Drawdown | Number | Maximum drawdown |
-| Sharpe Ratio | Number | Sharpe ratio |
 | Notes | Text | Performance notes |
 
 ### Step 3: Get Database IDs
@@ -111,15 +112,14 @@ Add to your `.env` file:
 ```bash
 # Notion Integration
 NOTION_TOKEN=secret_your_integration_token_here
-NOTION_DATABASE_ID=your_signals_database_id
-TRADES_DATABASE_ID=your_trades_database_id
 SIGNALS_DATABASE_ID=your_signals_database_id
+TRADES_DATABASE_ID=your_trades_database_id
 PERFORMANCE_DATABASE_ID=your_performance_database_id
 ```
 
 ## 🗄️ Database Structure
 
-### Signals Database Schema
+### Signals Database Schema (v3)
 
 ```json
 {
@@ -127,14 +127,6 @@ PERFORMANCE_DATABASE_ID=your_performance_database_id
     "database_id": "your_signals_database_id"
   },
   "properties": {
-    "Signal Type": {
-      "select": {
-        "name": "Bullish"
-      }
-    },
-    "Confidence": {
-      "number": 8
-    },
     "Title": {
       "title": [
         {
@@ -144,14 +136,13 @@ PERFORMANCE_DATABASE_ID=your_performance_database_id
         }
       ]
     },
-    "Reasoning": {
-      "rich_text": [
-        {
-          "text": {
-            "content": "Tesla exceeded analyst expectations with strong revenue growth..."
-          }
-        }
-      ]
+    "Signal": {
+      "select": {
+        "name": "Bullish"
+      }
+    },
+    "Confidence": {
+      "number": 8
     },
     "ETFs": {
       "multi_select": [
@@ -165,24 +156,69 @@ PERFORMANCE_DATABASE_ID=your_performance_database_id
         "name": "Electric Vehicles"
       }
     },
-    "Source": {
-      "rich_text": [
-        {
-          "text": {
-            "content": "Reuters"
-          }
-        }
-      ]
-    },
     "Timestamp": {
       "date": {
         "start": "2024-01-01T10:00:00.000Z"
       }
     },
+    "Reasoning": {
+      "rich_text": [
+        {
+          "text": {
+            "content": "• Tesla exceeded analyst expectations with strong revenue growth\n• Institutional volume in TSLA > 2x average\n• Reuters, Bloomberg coverage aligns"
+          }
+        }
+      ]
+    },
     "Status": {
       "select": {
-        "name": "Active"
+        "name": "New"
       }
+    },
+    "If-Then Scenario": {
+      "rich_text": [
+        {
+          "text": {
+            "content": "If TSLA volume > 2x 5-day average this week, confirm bullish thesis; if negative headlines increase, reduce exposure."
+          }
+        }
+      ]
+    },
+    "Contradictory Signals": {
+      "rich_text": [
+        {
+          "text": {
+            "content": "Supply chain issues or regulatory changes could reverse momentum."
+          }
+        }
+      ]
+    },
+    "Uncertainty Metric": {
+      "rich_text": [
+        {
+          "text": {
+            "content": "Confidence 8, but headline-driven and source agreement only moderate."
+          }
+        }
+      ]
+    },
+    "Position Risk Bracket": {
+      "rich_text": [
+        {
+          "text": {
+            "content": "Position sizing: conservative (high volatility, sector headline risk)"
+          }
+        }
+      ]
+    },
+    "Price Anchors": {
+      "rich_text": [
+        {
+          "text": {
+            "content": "TSLA: $250.50 → $255.75 (+2.1%) | 2.1M (1.8x avg)\nLIT: $95.30 → $95.80 (+1.7%) | 1.2M (1.5x avg)"
+          }
+        }
+      ]
     }
   }
 }
@@ -196,7 +232,7 @@ PERFORMANCE_DATABASE_ID=your_performance_database_id
     "database_id": "your_trades_database_id"
   },
   "properties": {
-    "Symbol": {
+    "Ticker": {
       "title": [
         {
           "text": {
@@ -205,40 +241,28 @@ PERFORMANCE_DATABASE_ID=your_performance_database_id
         }
       ]
     },
-    "Signal ID": {
-      "rich_text": [
-        {
-          "text": {
-            "content": "signal_123"
-          }
-        }
-      ]
-    },
-    "Entry Price": {
-      "number": 250.50
-    },
-    "Exit Price": {
-      "number": 255.75
+    "Action": {
+      "select": {
+        "name": "BUY"
+      }
     },
     "Quantity": {
       "number": 100
     },
-    "Entry Date": {
+    "Price": {
+      "number": 250.50
+    },
+    "Trade Date": {
       "date": {
         "start": "2024-01-01T10:30:00.000Z"
       }
     },
-    "Exit Date": {
-      "date": {
-        "start": "2024-01-01T15:45:00.000Z"
-      }
-    },
-    "P&L": {
-      "number": 525.00
+    "Trade Value": {
+      "number": 25050.00
     },
     "Status": {
       "select": {
-        "name": "Closed"
+        "name": "Open"
       }
     },
     "Notes": {
@@ -261,11 +285,10 @@ PERFORMANCE_DATABASE_ID=your_performance_database_id
 ```bash
 # Required
 NOTION_TOKEN=secret_your_integration_token_here
-NOTION_DATABASE_ID=your_main_database_id
+SIGNALS_DATABASE_ID=your_signals_database_id
 
 # Optional (for separate databases)
 TRADES_DATABASE_ID=your_trades_database_id
-SIGNALS_DATABASE_ID=your_signals_database_id
 PERFORMANCE_DATABASE_ID=your_performance_database_id
 ```
 
@@ -308,121 +331,20 @@ integrations:
 python marketman notion sync
 
 # Sync specific data types
-python marketman notion sync --signals
-python marketman notion sync --trades
-python marketman notion sync --performance
-
-# Force sync (ignore timestamps)
-python marketman notion sync --force
+python marketman notion sync --signals-only
+python marketman notion sync --trades-only
+python marketman notion sync --performance-only
 ```
 
-### Automatic Sync
+### Signal Fields
 
-MarketMan automatically syncs data when:
+The v3 signal schema includes these actionable fields:
 
-- New signals are generated
-- Trades are opened/closed
-- Performance metrics are updated
-
-### CLI Commands
-
-```bash
-# Test connection
-python marketman notion test
-
-# Show sync status
-python marketman notion status
-
-# View recent entries
-python marketman notion recent --limit 10
-
-# Search entries
-python marketman notion search --query "TSLA"
-
-# Export data
-python marketman notion export --format csv
-```
-
-### Programmatic Usage
-
-```python
-from src.integrations.notion import NotionReporter
-
-# Initialize reporter
-reporter = NotionReporter(
-    token="your_token",
-    database_id="your_database_id"
-)
-
-# Add signal
-signal_id = reporter.add_signal({
-    "signal_type": "bullish",
-    "confidence": 8,
-    "title": "Tesla Reports Strong Earnings",
-    "reasoning": "Exceeded analyst expectations...",
-    "etfs": ["TSLA", "LIT", "DRIV"],
-    "sector": "Electric Vehicles"
-})
-
-# Add trade
-trade_id = reporter.add_trade({
-    "symbol": "TSLA",
-    "signal_id": signal_id,
-    "entry_price": 250.50,
-    "quantity": 100,
-    "entry_timestamp": "2024-01-01T10:30:00Z"
-})
-
-# Update performance
-reporter.update_performance({
-    "date": "2024-01-01",
-    "total_trades": 15,
-    "win_rate": 0.73,
-    "total_pnl": 1250.00
-})
-```
-
-## 📊 Data Formatting
-
-### Rich Text Formatting
-
-MarketMan supports Notion's rich text formatting:
-
-```python
-# Bold text
-{"text": {"content": "Important signal"}, "annotations": {"bold": True}}
-
-# Colored text
-{"text": {"content": "High confidence"}, "annotations": {"color": "green"}}
-
-# Links
-{"text": {"content": "Source article", "link": {"url": "https://example.com"}}}
-```
-
-### Emoji Support
-
-```python
-# Signal types with emojis
-signal_emojis = {
-    "bullish": "📈",
-    "bearish": "📉", 
-    "neutral": "➡️"
-}
-
-# Confidence levels
-confidence_emojis = {
-    10: "🔥",
-    9: "⚡",
-    8: "💪",
-    7: "👍",
-    6: "👌",
-    5: "🤔",
-    4: "😐",
-    3: "😕",
-    2: "😟",
-    1: "😱"
-}
-```
+- **If-Then Scenario**: Validation logic for confirming or refuting signals
+- **Contradictory Signals**: Risks and opposing factors to monitor
+- **Uncertainty Metric**: Confidence level with context and caveats
+- **Position Risk Bracket**: Position sizing guidance based on volatility
+- **Price Anchors**: Real-time ETF price context and trends
 
 ### Database Views
 
@@ -521,57 +443,37 @@ Add custom properties to your databases:
 
 ```python
 # Custom signal properties
-custom_properties = {
-    "Market Cap": {"number": 1000000000},
-    "Volume": {"number": 5000000},
-    "Analyst Rating": {"select": {"name": "Buy"}},
-    "Risk Level": {"select": {"name": "Medium"}}
-}
+properties["Custom Field"] = {"rich_text": [{"text": {"content": "value"}}]}
 ```
 
-### Filtering and Sorting
+### Signal Filtering
+
+Filter signals by various criteria:
 
 ```python
-# Filter signals by confidence
-filter_params = {
-    "filter": {
-        "property": "Confidence",
-        "number": {
-            "greater_than_or_equal_to": 7
-        }
-    }
-}
+# Filter by confidence
+high_confidence_signals = [s for s in signals if s["confidence"] >= 8]
 
-# Sort by timestamp
-sort_params = {
-    "sorts": [
-        {
-            "property": "Timestamp",
-            "direction": "descending"
-        }
-    ]
-}
+# Filter by sector
+defense_signals = [s for s in signals if s["sector"] == "Defense"]
+
+# Filter by status
+new_signals = [s for s in signals if s["status"] == "New"]
 ```
 
-### Batch Operations
+### Performance Tracking
+
+Track signal performance over time:
 
 ```python
-# Batch create multiple entries
-entries = [
-    {"title": "Signal 1", "confidence": 8},
-    {"title": "Signal 2", "confidence": 7},
-    {"title": "Signal 3", "confidence": 9}
-]
+# Calculate signal accuracy
+def calculate_accuracy(signals):
+    correct = sum(1 for s in signals if s["outcome"] == "correct")
+    return correct / len(signals) if signals else 0
 
-reporter.batch_create(entries)
-```
-
-### Webhooks (Future Feature)
-
-```python
-# Subscribe to database changes
-webhook_url = "https://your-server.com/notion-webhook"
-reporter.create_webhook(webhook_url)
+# Track by signal type
+bullish_accuracy = calculate_accuracy([s for s in signals if s["signal"] == "Bullish"])
+bearish_accuracy = calculate_accuracy([s for s in signals if s["signal"] == "Bearish"])
 ```
 
 ## 🔗 Related Documentation

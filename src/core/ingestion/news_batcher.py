@@ -290,7 +290,7 @@ class NewsBatcher:
         for group_key, timer in list(self.batch_timers.items()):
             if (current_time - timer).total_seconds() >= self.max_batch_wait_time:
                 batch = self.pending_batches.get(group_key)
-                if batch and batch.batch_size >= self.min_batch_size:
+                if batch:  # Return any expired batch, regardless of size
                     expired_batches.append(batch)
                     # Remove from pending
                     del self.pending_batches[group_key]

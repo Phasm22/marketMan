@@ -102,7 +102,7 @@ class NotionJournalIntegration:
     
     def log_signal(self, signal_data: Dict[str, Any]) -> bool:
         """
-        Log a signal to the Phase 4 Signals database
+        Log a signal to the Notion Signals database (v3 schema only)
         
         Args:
             signal_data: Dictionary containing:
@@ -111,13 +111,13 @@ class NotionJournalIntegration:
                 - confidence (float): Signal confidence (1-10)
                 - etfs (List[str]): List of relevant ETF tickers
                 - sector (str): Market sector
-                - reasoning (str): Signal reasoning
+                - reasoning (str): Signal reasoning (bullet-pointed)
                 - journal_notes (str): Optional journal notes
-                - speculative (bool): If the signal is speculative (schema v2+)
-                - needs_confirmation (bool): If the signal needs confirmation (schema v2+)
-                - confidence_capped (bool): If confidence was capped (schema v2+)
-                - custom_reasoning (str): Custom rule-based reasoning (schema v2+)
-                - signal_schema_version (int): Schema version (default 2)
+                - if_then_scenario (str): If-then validation logic
+                - contradictory_signals (str): Opposing signals/risks
+                - uncertainty_metric (str): Confidence with context
+                - price_anchors (Dict): ETF price context
+                - position_risk_bracket (str): Position sizing guidance
         
         Returns:
             bool: True if successfully logged, False otherwise
@@ -127,14 +127,14 @@ class NotionJournalIntegration:
             return False
         
         try:
-            # Build properties
+            # Build core properties
             properties = {
                 "Title": {"title": [{"text": {"content": signal_data.get("title", "Signal")}}]},
                 "Signal": {"select": {"name": signal_data.get("signal", "Neutral")}},
                 "Confidence": {"number": signal_data.get("confidence", 5.0)},
                 "Sector": {"select": {"name": signal_data.get("sector", "Mixed")}},
                 "Timestamp": {"date": {"start": signal_data.get("timestamp", datetime.now().isoformat())}},
-                "Reasoning": {"rich_text": [{"text": {"content": signal_data.get("reasoning", "")}}]},
+                "Reasoning": {"rich_text": [{"text": {"content": self._format_reasoning(signal_data.get("reasoning", ""))}}]},
                 "Status": {"select": {"name": "New"}},
             }
             
@@ -147,19 +147,33 @@ class NotionJournalIntegration:
             if signal_data.get("journal_notes"):
                 properties["Journal Notes"] = {"rich_text": [{"text": {"content": signal_data["journal_notes"]}}]}
             
-            # Add new schema v2+ fields if present
-            if "speculative" in signal_data:
-                properties["Speculative"] = {"checkbox": bool(signal_data["speculative"])}
-            if "needs_confirmation" in signal_data:
-                properties["Needs Confirmation"] = {"checkbox": bool(signal_data["needs_confirmation"])}
-            if "confidence_capped" in signal_data:
-                properties["Confidence Capped"] = {"checkbox": bool(signal_data["confidence_capped"])}
-            if "custom_reasoning" in signal_data:
-                properties["Custom Reasoning"] = {"rich_text": [{"text": {"content": signal_data["custom_reasoning"]}}]}
-            if "signal_schema_version" in signal_data:
-                properties["Signal Schema Version"] = {"number": int(signal_data["signal_schema_version"])}
-            else:
-                properties["Signal Schema Version"] = {"number": 2}
+            # Add v3 actionable fields
+            if signal_data.get("if_then_scenario"):
+                properties["If-Then Scenario"] = {"rich_text": [{"text": {"content": signal_data["if_then_scenario"]}}]}
+            
+            if signal_data.get("contradictory_signals"):
+            
+                properties["Contradictory Signals"] = {"rich_text": [{"text": {"content": signal_data["contradictory_signals"]}}]}
+            
+            if signal_data.get("uncertainty_metric"):
+                properties["Uncertainty Metric"] = {"rich_text": [{"text": {"content": signal_data["uncertainty_metric"]}}]}
+            
+            if signal_data.get("position_risk_bracket"):
+                properties["Position Risk Bracket"] = {"rich_text": [{"text": {"content": signal_data["position_risk_bracket"]}}]}
+            
+            # Improved price anchors logic
+            price_anchors = signal_data.get("price_anchors", {})
+            anchors_lines = []
+            for etf, data in price_anchors.items():
+                prev_close = data.get('prev_close', None)
+                pre_market = data.get('pre_market', None)
+                trend = data.get('5d_trend', None)
+                volume = data.get('volume', None)
+                # Only include if at least one value is not None or not 'N/A'
+                if any([prev_close not in [None, '', 'N/A'], pre_market not in [None, '', 'N/A'], trend not in [None, '', 'N/A'], volume not in [None, '', 'N/A']]):
+                    anchors_lines.append(f"{etf}: ${prev_close if prev_close not in [None, '', 'N/A'] else '?'} → ${pre_market if pre_market not in [None, '', 'N/A'] else '?'} ({trend if trend not in [None, '', 'N/A'] else '?'}) | {volume if volume not in [None, '', 'N/A'] else '?'}")
+            if anchors_lines:
+                properties["Price Anchors"] = {"rich_text": [{"text": {"content": '\n'.join(anchors_lines)}}]}
             
             payload = {
                 "parent": {"database_id": self.signals_db_id},
@@ -178,19 +192,38 @@ class NotionJournalIntegration:
                 return True
             else:
                 logger.error(f"❌ Failed to log signal: {response.status_code} - {response.text}")
-                # Warn if new fields are missing from Notion schema
+                # Warn if v3 fields are missing from Notion schema
                 missing_fields = []
-                for field in ["Speculative", "Needs Confirmation", "Confidence Capped", "Custom Reasoning", "Signal Schema Version"]:
+                for field in ["If-Then Scenario", "Contradictory Signals", "Uncertainty Metric", "Position Risk Bracket", "Price Anchors"]:
                     if field not in response.text:
                         continue
                     missing_fields.append(field)
                 if missing_fields:
-                    logger.warning(f"⚠️ Notion schema may be missing fields: {missing_fields}. Please update the Notion database schema if needed.")
+                    logger.warning(f"⚠️ Notion schema may be missing v3 fields: {missing_fields}. Please update the Notion database schema.")
                 return False
                 
         except Exception as e:
             logger.error(f"❌ Error logging signal: {e}")
             return False
+    
+    def _format_reasoning(self, reasoning) -> str:
+        """
+        Format reasoning field to ensure it's a string for Notion
+        
+        Args:
+            reasoning: Can be a string, list, or other format
+            
+        Returns:
+            str: Formatted reasoning as a string
+        """
+        if isinstance(reasoning, list):
+            # Convert list of bullet points to string
+            return "\n".join([f"• {item}" if not item.startswith("•") else item for item in reasoning])
+        elif isinstance(reasoning, str):
+            return reasoning
+        else:
+            # Convert any other type to string
+            return str(reasoning)
     
     def update_signal_status(self, signal_id: str, status: str, journal_notes: Optional[str] = None) -> bool:
         """

@@ -28,10 +28,17 @@ def setup_logging(verbose: bool = False) -> None:
         verbose: Enable verbose logging if True
     """
     level = logging.DEBUG if verbose else logging.INFO
+    root = logging.getLogger()
+    # Remove all handlers associated with the root logger object.
+    for handler in root.handlers[:]:
+        root.removeHandler(handler)
     logging.basicConfig(
         level=level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("logs/marketman_cli.log")],
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler("/var/log/marketman.log")
+        ],
     )
 
 

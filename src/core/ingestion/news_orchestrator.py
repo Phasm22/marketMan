@@ -6,6 +6,7 @@ import logging
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 import os
+import pprint
 
 from .news_filter import NewsFilter, NewsItem, create_news_filter
 from .news_batcher import NewsBatcher, NewsBatch, create_news_batcher
@@ -341,13 +342,15 @@ class NewsIngestionOrchestrator:
                 "sector": analysis_result.get("sector", "Mixed"),
                 "reasoning": analysis_result.get("reasoning", ""),
                 "journal_notes": f"Batch ID: {batch.batch_id}, Quality: {batch.batch_quality_score:.2f}",
-                # New schema v2+ fields
-                "speculative": analysis_result.get("speculative", False),
-                "needs_confirmation": analysis_result.get("needs_confirmation", False),
-                "confidence_capped": analysis_result.get("confidence_capped", False),
-                "custom_reasoning": analysis_result.get("custom_reasoning", ""),
-                "signal_schema_version": analysis_result.get("signal_schema_version", 2),
+                # v3 actionable fields only
+                "if_then_scenario": analysis_result.get("if_then_scenario", ""),
+                "contradictory_signals": analysis_result.get("contradictory_signals", ""),
+                "uncertainty_metric": analysis_result.get("uncertainty_metric", ""),
+                "price_anchors": analysis_result.get("price_anchors", {}),
+                "position_risk_bracket": analysis_result.get("position_risk_bracket", ""),
             }
+            # Add debug log for price anchors
+            logger.info(f"[DEBUG] Notion price_anchors payload: {pprint.pformat(signal_data['price_anchors'])}")
             success = self.notion_journal.log_signal(signal_data)
             if success:
                 logger.debug("💾 Signal logged to Notion journal")

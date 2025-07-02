@@ -6,6 +6,7 @@ import os
 import sys
 import logging
 from datetime import datetime
+import pprint
 
 # Add project root to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -20,16 +21,18 @@ from core.signals.etf_signal_engine import (
     generate_tactical_explanation,
     categorize_etfs_by_sector,
 )
-from core.ingestion.market_data import get_market_snapshot
+from src.core.ingestion.market_data import get_market_snapshot, get_etf_prices, adjust_price_anchors_for_splits
 from integrations.gmail_poller import GmailPoller
 from integrations.notion_reporter import NotionReporter
 from core.journal.report_consolidator import create_consolidated_signal_report
 from src.core.utils.config_loader import get_config
+from core.ingestion.technicals import get_batch_technicals
+from core.signals.pattern_recognizer import create_pattern_recognizer
+# from src.core.ingestion.news_orchestrator import create_news_orchestrator
 
 # Set up logging with debug control
 DEBUG_MODE = os.getenv("DEBUG", "false").lower() == "true"
 log_level = logging.DEBUG if DEBUG_MODE else logging.INFO
-logging.basicConfig(level=log_level)
 logger = logging.getLogger(__name__)
 
 # Alert batching configuration
@@ -149,10 +152,20 @@ class NewsAnalyzer:
         session_timestamp = datetime.now().isoformat()
         all_mentioned_etfs = set()
 
-        # Get market snapshot once for all analyses
-        market_snapshot, used_fallback, fallback_reason = get_market_snapshot()
+        # Before batch analysis
+        logger.info(f"[DEBUG] Fetching ETF prices for batch analysis...")
+        etf_prices, used_fallback, fallback_reason = get_etf_prices()
+        logger.info(f"[DEBUG] ETF prices fetched: {pprint.pformat(etf_prices)}")
         self.market_data_fallback = used_fallback
         self.market_data_fallback_reason = fallback_reason
+
+        # Fetch technicals and pattern results for all ETFs in the snapshot
+        config = get_config().load_settings()
+        risk_config = config.get('risk', {})
+        etf_symbols = list(etf_prices.keys())
+        technicals = get_batch_technicals(etf_symbols)
+        pattern_recognizer = create_pattern_recognizer()
+        pattern_results = pattern_recognizer.detect_patterns(etf_symbols, technicals)
 
         for alert in alerts:
             logger.info(f"Processing alert for: {alert['search_term']}")
@@ -169,16 +182,33 @@ class NewsAnalyzer:
                         headline=article["title"],
                         summary=article["snippet"],
                         snippet=article["snippet"],
-                        etf_prices=market_snapshot,
+                        etf_prices=etf_prices,
                         contextual_insight=contextual_insight,
                         memory=memory,
+                        technicals=technicals,
+                        pattern_results=pattern_results,
+                        risk_config=risk_config,
                     )
 
                     if not analysis:
                         continue
 
                     # Add market snapshot to analysis
-                    analysis["market_snapshot"] = market_snapshot
+                    analysis["market_snapshot"] = etf_prices
+
+                    # Apply split adjustments to price anchors if needed
+                    if etf_prices and any(etf_data.get('split_factor', 1.0) != 1.0 for etf_data in etf_prices.values()):
+                        split_adjustments = {
+                            symbol: data.get('split_factor', 1.0) 
+                            for symbol, data in etf_prices.items() 
+                            if data.get('split_factor', 1.0) != 1.0
+                        }
+                        if split_adjustments:
+                            analysis["price_anchors"] = adjust_price_anchors_for_splits(
+                                analysis.get("price_anchors", {}), 
+                                split_adjustments
+                            )
+                            logger.info(f"🔄 Applied split adjustments to price anchors: {split_adjustments}")
 
                     # Add metadata for consolidated reporting
                     analysis["source_article"] = {
@@ -268,7 +298,7 @@ class NewsAnalyzer:
 
                     for etf in analysis_etfs:
                         is_acceptable, support_gap = check_technical_support(
-                            etf, market_snapshot
+                            etf, etf_prices
                         )
                         if is_acceptable:
                             qualified_etfs.append(etf)
@@ -291,6 +321,7 @@ class NewsAnalyzer:
                     )
 
                     for analysis in technically_sound_signals:
+                        logger.info(f"[DEBUG] Price anchors for alert: {pprint.pformat(analysis.get('price_anchors', {}))}")
                         alert_id = queue_alert(
                             signal=analysis.get("signal", "Neutral"),
                             confidence=analysis.get("confidence", 0),
@@ -301,6 +332,11 @@ class NewsAnalyzer:
                             article_url=notion_url,
                             search_term="filtered_high_conviction",
                             strategy=CURRENT_BATCH_STRATEGY,
+                            if_then_scenario=analysis.get("if_then_scenario", ""),
+                            contradictory_signals=analysis.get("contradictory_signals", ""),
+                            uncertainty_metric=analysis.get("uncertainty_metric", ""),
+                            price_anchors=analysis.get("price_anchors", {}),
+                            position_risk_bracket=analysis.get("position_risk_bracket", ""),
                         )
                         logger.info(f"✅ Alert queued: {alert_id[:8]}")
                 else:
@@ -520,10 +556,6 @@ if __name__ == "__main__":
     from src.core.utils.config_loader import get_config
 
     # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
     logger = logging.getLogger(__name__)
 
     logger.info("🚀 Starting MarketMan News Analysis System...")

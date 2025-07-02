@@ -7,6 +7,9 @@ import random
 import logging
 import requests
 from typing import Dict, Any, Optional
+from datetime import datetime, timedelta
+import json
+from pathlib import Path
 
 from src.core.utils.config_loader import get_config
 
@@ -69,6 +72,7 @@ def get_etf_prices(etf_symbols=None, rate_limit=True, max_retries=2):
     try:
         prices = {}
         failed_symbols = []
+        split_adjustments = {}  # Track split adjustments for price anchors
 
         logger.info(f"💰 Fetching real-time prices for {len(etf_symbols)} ETFs...")
 
@@ -84,6 +88,12 @@ def get_etf_prices(etf_symbols=None, rate_limit=True, max_retries=2):
 
                     ticker = yf.Ticker(symbol)
 
+                    # Check for corporate actions (splits) first
+                    split_factor = check_corporate_actions(ticker, symbol)
+                    if split_factor != 1.0:
+                        split_adjustments[symbol] = split_factor
+                        logger.info(f"🔄 Detected split for {symbol}: {split_factor}x adjustment factor")
+
                     # Fetch last 2 days for close/open logic with timeout
                     hist = ticker.history(period="2d", timeout=10)
 
@@ -95,6 +105,12 @@ def get_etf_prices(etf_symbols=None, rate_limit=True, max_retries=2):
                         else:
                             current_price = hist["Close"].iloc[-1]
                             prev_close = hist["Open"].iloc[-1] if len(hist) > 0 else current_price
+
+                        # Apply split adjustment if needed
+                        if split_factor != 1.0:
+                            prev_close *= split_factor
+                            current_price *= split_factor
+                            logger.info(f"🔄 Applied {split_factor}x split adjustment to {symbol} prices")
 
                         # Calculate percentage change
                         change_pct = (
@@ -111,6 +127,7 @@ def get_etf_prices(etf_symbols=None, rate_limit=True, max_retries=2):
                             "change_pct": round(change_pct, 2),
                             "name": f"{symbol} ETF",  # Simplified name to avoid API calls
                             "volume": int(volume) if volume else 0,
+                            "split_factor": split_factor,  # Include split factor in price data
                         }
 
                         trend_emoji = "📈" if change_pct > 0 else "📉" if change_pct < 0 else "➖"
@@ -155,6 +172,10 @@ def get_etf_prices(etf_symbols=None, rate_limit=True, max_retries=2):
         if failed_symbols:
             logger.warning(f"⚠️ Failed to fetch prices for: {', '.join(failed_symbols[:5])}{'...' if len(failed_symbols) > 5 else ''}")
         
+        # Log split adjustments summary
+        if split_adjustments:
+            logger.info(f"🔄 Split adjustments applied: {split_adjustments}")
+        
         # If we have very few successful fetches, use fallback mock data
         if success_count < 3:
             reason = "Too few successful price fetches, using fallback mock data"
@@ -171,6 +192,118 @@ def get_etf_prices(etf_symbols=None, rate_limit=True, max_retries=2):
         reason = f"Error fetching ETF prices: {e}, using fallback mock data"
         logger.warning(f"⚠️ {reason}")
         return _get_fallback_mock_data(etf_symbols, config), True, reason
+
+
+def check_corporate_actions(ticker, symbol):
+    """
+    Check for corporate actions (splits) and return adjustment factor.
+    Returns 1.0 if no split, or the split factor (e.g., 2.0 for 2:1 split).
+    Uses ticker.splits (preferred) or ticker.actions (fallback).
+    """
+    try:
+        today = datetime.now()
+        split_factor = 1.0
+        found_split = False
+
+        # --- Preferred: Use ticker.splits (pandas Series) ---
+        splits = getattr(ticker, 'splits', None)
+        if splits is not None and not splits.empty:
+            # Check for splits in the last 5 days
+            for split_date, ratio in splits.items():
+                if ratio != 1.0:
+                    if isinstance(split_date, str):
+                        split_date_dt = datetime.strptime(split_date, '%Y-%m-%d')
+                    else:
+                        split_date_dt = split_date.to_pydatetime() if hasattr(split_date, 'to_pydatetime') else split_date
+                    if (today - split_date_dt).days <= 5:
+                        split_factor = ratio
+                        found_split = True
+                        logger.info(f"🔄 Found recent split for {symbol} on {split_date_dt.date()}: {ratio}x")
+                        # Log event
+                        log_corporate_action_event(symbol, {'date': str(split_date_dt.date()), 'ratio': ratio}, split_factor)
+                        break
+
+        # --- Fallback: Use ticker.actions (DataFrame) ---
+        if not found_split:
+            actions = getattr(ticker, 'actions', None)
+            if actions is not None and not actions.empty and 'splitRatio' in actions.columns:
+                for action_date, row in actions.iterrows():
+                    split_ratio = row.get('splitRatio', 1.0)
+                    if split_ratio != 1.0:
+                        if isinstance(action_date, str):
+                            action_date_dt = datetime.strptime(action_date, '%Y-%m-%d')
+                        else:
+                            action_date_dt = action_date.to_pydatetime() if hasattr(action_date, 'to_pydatetime') else action_date
+                        if (today - action_date_dt).days <= 5:
+                            split_factor = split_ratio
+                            found_split = True
+                            logger.info(f"🔄 Found recent split for {symbol} in actions on {action_date_dt.date()}: {split_ratio}x")
+                            log_corporate_action_event(symbol, {'date': str(action_date_dt.date()), 'ratio': split_ratio}, split_factor)
+                            break
+
+        return split_factor
+    except Exception as e:
+        logger.warning(f"⚠️ Error checking corporate actions for {symbol}: {e}")
+        return 1.0
+
+
+def log_corporate_action_event(symbol, event_data, split_factor):
+    """
+    Log raw yfinance corporate action events for verification and debugging.
+    Logs events for 5 days around the split to verify consistency.
+    """
+    try:
+        # Create logs directory if it doesn't exist
+        logs_dir = Path("logs")
+        logs_dir.mkdir(exist_ok=True)
+        
+        # Create corporate actions log file
+        log_file = logs_dir / "corporate_actions.log"
+        
+        # Prepare log entry
+        log_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "symbol": symbol,
+            "split_factor": split_factor,
+            "event_data": event_data.to_dict() if hasattr(event_data, 'to_dict') else str(event_data),
+            "event_type": "stock_split",
+            "verification_period": "5_days_around_split"
+        }
+        
+        # Append to log file
+        with open(log_file, 'a') as f:
+            f.write(json.dumps(log_entry) + '\n')
+        
+        logger.info(f"📝 Logged corporate action event for {symbol} to {log_file}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error logging corporate action event for {symbol}: {e}")
+
+
+def adjust_price_anchors_for_splits(price_anchors, split_adjustments):
+    """
+    Automatically adjust price anchor fields with split factors.
+    This function should be called when processing price anchors for signals.
+    """
+    if not split_adjustments:
+        return price_anchors
+    
+    adjusted_anchors = price_anchors.copy()
+    
+    for symbol, split_factor in split_adjustments.items():
+        if symbol in adjusted_anchors:
+            # Adjust all price-related fields
+            for field in ['prev_close', 'pre_market', 'current_price']:
+                if field in adjusted_anchors[symbol]:
+                    original_value = adjusted_anchors[symbol][field]
+                    adjusted_value = original_value * split_factor
+                    adjusted_anchors[symbol][field] = round(adjusted_value, 2)
+                    logger.info(f"🔄 Adjusted {symbol} {field}: {original_value} -> {adjusted_value} (split factor: {split_factor})")
+            
+            # Add split factor to the anchor data for reference
+            adjusted_anchors[symbol]['split_factor'] = split_factor
+    
+    return adjusted_anchors
 
 
 def _get_fallback_mock_data(etf_symbols, config=None):

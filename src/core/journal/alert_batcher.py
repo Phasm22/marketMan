@@ -42,6 +42,12 @@ class PendingAlert:
     timestamp: datetime = datetime.now()
     search_term: str = ""
     alert_id: str = ""
+    # New actionable fields (schema v3+)
+    if_then_scenario: str = ""
+    contradictory_signals: str = ""
+    uncertainty_metric: str = ""
+    price_anchors: Dict = None
+    position_risk_bracket: str = ""
 
     def __post_init__(self):
         if self.article_url is None:
@@ -50,6 +56,8 @@ class PendingAlert:
             self.search_term = ""
         if self.alert_id is None:
             self.alert_id = ""
+        if self.price_anchors is None:
+            self.price_anchors = {}
         if not self.alert_id:
             # Generate unique ID based on content
             content = f"{self.title}{self.reasoning}{self.timestamp.isoformat()}"
@@ -91,6 +99,11 @@ class AlertBatcher:
                         "article_url": alert.article_url,
                         "search_term": alert.search_term,
                         "strategy": strategy.value,
+                        "if_then_scenario": alert.if_then_scenario,
+                        "contradictory_signals": alert.contradictory_signals,
+                        "uncertainty_metric": alert.uncertainty_metric,
+                        "price_anchors": alert.price_anchors,
+                        "position_risk_bracket": alert.position_risk_bracket,
                     }
                 ),
                 "batch_id": None,  # Will be set when batched
@@ -128,6 +141,11 @@ class AlertBatcher:
                         article_url=str(content.get("article_url", "") or ""),
                         search_term=str(content.get("search_term", "") or ""),
                         timestamp=datetime.fromisoformat(db_alert["timestamp"]),
+                        if_then_scenario=content.get("if_then_scenario", ""),
+                        contradictory_signals=content.get("contradictory_signals", ""),
+                        uncertainty_metric=content.get("uncertainty_metric", ""),
+                        price_anchors=content.get("price_anchors", {}),
+                        position_risk_bracket=content.get("position_risk_bracket", ""),
                     )
                     alerts.append(alert)
 
@@ -203,7 +221,7 @@ class AlertBatcher:
             return None
 
     def create_batch_summary(self, alerts: List[PendingAlert], strategy: BatchStrategy) -> str:
-        """Create a summary message for a batch of alerts"""
+        """Create a summary message for a batch of alerts with actionable fields"""
         if not alerts:
             return ""
 
@@ -222,7 +240,42 @@ class AlertBatcher:
             }.get(alert.signal, "→ UNKNOWN")
             sector_display = sector_map.get(alert.sector, alert.sector)
             ts = alert.timestamp.astimezone(timezone).strftime('%Y-%m-%d %H:%M %Z')
-            return f"""{signal_indicator} Signal ({alert.confidence}/10)\n\n{alert.title[:80]}{'...' if len(alert.title) > 80 else ''}\n\nReason: {alert.reasoning}\n\nSector: {sector_display}\nTime: {ts}\nETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"""
+            
+            # Build enhanced single alert summary with actionable fields
+            summary = f"""{signal_indicator} Signal ({alert.confidence}/10)\n\n{alert.title[:80]}{'...' if len(alert.title) > 80 else ''}\n\n"""
+            
+            # Add reasoning (now contains bullet points)
+            if alert.reasoning:
+                summary += f"📊 {alert.reasoning}\n\n"
+            
+            # Add if-then scenario if available
+            if alert.if_then_scenario:
+                summary += f"🎯 Validation: {alert.if_then_scenario}\n\n"
+            
+            # Add uncertainty metric if available
+            if alert.uncertainty_metric:
+                summary += f"⚠️ {alert.uncertainty_metric}\n\n"
+            
+            # Add contradictory signals if available
+            if alert.contradictory_signals:
+                summary += f"🔄 Risks: {alert.contradictory_signals}\n\n"
+            
+            # Add position risk bracket if available
+            if alert.position_risk_bracket:
+                summary += f"💰 {alert.position_risk_bracket}\n\n"
+            
+            # Add price anchors if available
+            if alert.price_anchors:
+                summary += "📈 Price Context:\n"
+                for etf, data in list(alert.price_anchors.items())[:3]:  # Top 3 ETFs
+                    prev_close = data.get('prev_close', 'N/A')
+                    pre_market = data.get('pre_market', 'N/A')
+                    trend = data.get('5d_trend', 'N/A')
+                    summary += f"• {etf}: ${prev_close} → ${pre_market} ({trend})\n"
+                summary += "\n"
+            
+            summary += f"Sector: {sector_display}\nTime: {ts}\nETFs: {', '.join(alert.etfs[:4])}{'...' if len(alert.etfs) > 4 else ''}"
+            return summary
 
         # Multi-alert batch summary
         sectors = {}
@@ -255,17 +308,26 @@ class AlertBatcher:
         signal_parts = []
         for signal, count in total_signals.items():
             if count > 0:
-                primary_signal = signal.split("|")[0] if "|" in signal else signal
-                emoji = {"Bullish": "↗", "Bearish": "↘", "Neutral": "→"}.get(primary_signal, "→")
+                emoji = {"Bullish": "↗", "Bearish": "↘", "Neutral": "→"}.get(signal, "→")
                 signal_parts.append(f"{emoji} {count} {signal}")
         summary += f"Signals: {' | '.join(signal_parts)}\n\n"
 
-        # High confidence
+        # High confidence with actionable fields
         if high_conf_alerts:
             summary += "🔥 High Confidence Alerts:\n"
             for alert in high_conf_alerts[:3]:  # Top 3
                 sector_display = sector_map.get(alert.sector, alert.sector)
-                summary += f"• {alert.signal} {sector_display}: {alert.title}\n"
+                summary += f"• {alert.signal} {sector_display}: {alert.title[:60]}...\n"
+                
+                # Add key actionable info for high confidence alerts
+                if alert.uncertainty_metric:
+                    summary += f"  ⚠️ {alert.uncertainty_metric}\n"
+                if alert.position_risk_bracket:
+                    summary += f"  💰 {alert.position_risk_bracket}\n"
+                if alert.if_then_scenario:
+                    summary += f"  🎯 {alert.if_then_scenario[:80]}...\n"
+                summary += "\n"
+                
             if len(high_conf_alerts) > 3:
                 summary += f"• +{len(high_conf_alerts)-3} more high confidence signals\n"
             summary += "\n"
@@ -275,7 +337,15 @@ class AlertBatcher:
             summary += "🟡 Moderate Confidence Alerts:\n"
             for alert in moderate_conf_alerts[:3]:
                 sector_display = sector_map.get(alert.sector, alert.sector)
-                summary += f"• {alert.signal} {sector_display}: {alert.title}\n"
+                summary += f"• {alert.signal} {sector_display}: {alert.title[:60]}...\n"
+                
+                # Add key actionable info for moderate confidence alerts
+                if alert.uncertainty_metric:
+                    summary += f"  ⚠️ {alert.uncertainty_metric}\n"
+                if alert.position_risk_bracket:
+                    summary += f"  💰 {alert.position_risk_bracket}\n"
+                summary += "\n"
+                
             if len(moderate_conf_alerts) > 3:
                 summary += f"• +{len(moderate_conf_alerts)-3} more moderate confidence signals\n"
             summary += "\n"
@@ -420,6 +490,11 @@ def queue_alert(
     article_url: str = "",
     search_term: str = "",
     strategy: BatchStrategy = BatchStrategy.SMART_BATCH,
+    if_then_scenario: str = "",
+    contradictory_signals: str = "",
+    uncertainty_metric: str = "",
+    price_anchors: Dict = None,
+    position_risk_bracket: str = "",
 ) -> str:
     """
     Queue an alert for batching
@@ -436,6 +511,11 @@ def queue_alert(
         article_url=str(article_url or ""),
         search_term=str(search_term or ""),
         timestamp=datetime.now(),
+        if_then_scenario=if_then_scenario,
+        contradictory_signals=contradictory_signals,
+        uncertainty_metric=uncertainty_metric,
+        price_anchors=price_anchors or {},
+        position_risk_bracket=position_risk_bracket,
     )
 
     batcher.add_alert(alert, strategy)
