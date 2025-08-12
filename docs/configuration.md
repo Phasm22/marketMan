@@ -1,8 +1,6 @@
 # Configuration Guide
 
-Complete guide to configuring MarketMan for your trading needs.
-
-## 📋 Table of Contents
+## Table of Contents
 
 - [Overview](#overview)
 - [Configuration Files](#configuration-files)
@@ -12,15 +10,15 @@ Complete guide to configuring MarketMan for your trading needs.
 - [Performance Tuning](#performance-tuning)
 - [Validation](#validation)
 
-## 🎯 Overview
+## Overview
 
 MarketMan uses a YAML-based configuration system:
-- **settings.yaml** - Main system configuration and API keys
-- **strategies.yaml** - Trading strategy configurations
-- **brokers.yaml** - Broker and trading settings
-- **Runtime validation** - Ensures settings are valid
+- `settings.yaml` - Main system configuration and API keys
+- `strategies.yaml` - Trading strategy configurations
+- `brokers.yaml` - Broker and trading settings
+- Runtime validation ensures settings are valid
 
-## 📁 Configuration Files
+## Configuration Files
 
 ### settings.yaml
 

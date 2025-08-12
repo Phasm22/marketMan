@@ -1,8 +1,6 @@
 # MarketMan User Guide
 
-Complete guide to using MarketMan for automated trading signal generation and analysis.
-
-## 📋 Table of Contents
+## Table of Contents
 
 - [Getting Started](#getting-started)
 - [Core Concepts](#core-concepts)
@@ -11,19 +9,19 @@ Complete guide to using MarketMan for automated trading signal generation and an
 - [Monitoring & Alerts](#monitoring--alerts)
 - [Troubleshooting](#troubleshooting)
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
 Before using MarketMan, ensure you have:
 
-- **Python 3.9+** installed
-- **API Keys** for required services:
-  - OpenAI (for AI analysis)
-  - Finnhub (for financial news)
-  - NewsAPI (for general news)
-  - NewData (for additional sources)
-- **Pushover account** (optional, for notifications)
+- Python 3.9+ installed
+- API Keys for required services:
+   - OpenAI (for AI analysis)
+   - Finnhub (for financial news)
+   - NewsAPI (for general news)
+   - NewData (for additional sources)
+- Pushover account (optional, for notifications)
 
 ### Installation
 

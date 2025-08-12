@@ -2,7 +2,7 @@
 
 System architecture and design patterns for MarketMan.
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Overview](#overview)
 - [System Architecture](#system-architecture)
@@ -13,17 +13,17 @@ System architecture and design patterns for MarketMan.
 - [Performance](#performance)
 - [Scalability](#scalability)
 
-## 🎯 Overview
+## Overview
 
-MarketMan is built as a modular, event-driven system with clear separation of concerns. The architecture follows these principles:
+MarketMan is a modular, event-driven system with clear separation of concerns:
 
 - **Modularity**: Each component has a single responsibility
 - **Testability**: All components are easily testable
-- **Configuration**: External configuration for all settings
+- **Configuration**: All settings are externalized
 - **Error Handling**: Graceful error handling and logging
 - **Performance**: Efficient processing and memory usage
 
-## 🏗️ System Architecture
+## System Architecture
 
 ### High-Level Architecture
 
@@ -71,47 +71,47 @@ MarketMan is built as a modular, event-driven system with clear separation of co
 
 #### Core Components
 
-1. **Ingestion Layer** ✅ **IMPLEMENTED**
+1. **Ingestion Layer**
    - Multi-source news collection (Finnhub, NewsAPI, NewData)
    - Intelligent filtering with relevance scoring
    - Batch processing for efficiency
    - Quality scoring and validation
 
-2. **Signal Generation Layer** ✅ **IMPLEMENTED**
+2. **Signal Generation Layer**
    - AI-powered analysis using GPT-4
    - Technical indicators and pattern recognition
    - Multi-source validation
    - Confidence scoring (1-10 scale)
 
-3. **Risk Management Layer** ✅ **IMPLEMENTED**
+3. **Risk Management Layer**
    - Position sizing using Kelly Criterion
    - Portfolio risk management
    - Stop loss calculations
    - Risk limits enforcement
 
-4. **Journal Layer** ✅ **IMPLEMENTED**
+4. **Journal Layer**
    - Trade tracking and logging
    - Performance analytics and reporting
    - Signal logging and analysis
    - Fidelity integration for trade import
 
-5. **Integration Layer** ✅ **IMPLEMENTED**
+5. **Integration Layer**
    - Pushover notifications
    - Notion integration for reporting
    - Gmail organization
    - Fidelity trade import
 
-6. **Options Trading Layer** ✅ **IMPLEMENTED**
+6. **Options Trading Layer**
    - Options scalping strategy
    - Greeks calculations
    - Position management
 
-7. **CLI Interface** ✅ **IMPLEMENTED**
+7. **CLI Interface**
    - Command-line interface for all operations
    - Status monitoring
    - Configuration management
 
-8. **Monitoring Layer** ✅ **IMPLEMENTED**
+8. **Monitoring Layer**
    - System health monitoring
    - Host availability checks
    - Automated alerts

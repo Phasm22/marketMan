@@ -1,8 +1,6 @@
 # Development Guide
 
-Complete guide for developers contributing to MarketMan.
-
-## 📋 Table of Contents
+## Table of Contents
 
 - [Getting Started](#getting-started)
 - [Project Structure](#project-structure)
@@ -13,14 +11,14 @@ Complete guide for developers contributing to MarketMan.
 - [Contributing](#contributing)
 - [Deployment](#deployment)
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
-- **Python 3.9+**
-- **Git**
-- **Virtual environment** (recommended)
-- **API keys** for development testing
+- Python 3.9+
+- Git
+- Virtual environment (recommended)
+- API keys for development testing
 
 ### Development Setup
 
@@ -65,7 +63,7 @@ marketMan/
 │   │   │   ├── news_orchestrator.py
 │   │   │   ├── news_filter.py
 │   │   │   ├── news_batcher.py
-│   │   │   └── news_sources/
+│   │   │   └── news_sources/     # News sources: Finnhub, NewsAPI, NewData
 │   │   ├── database/             # Database management
 │   │   │   ├── db_manager.py
 │   │   │   └── market_memory.py
